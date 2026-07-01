@@ -10,13 +10,41 @@ const SelectLabelContext = React.createContext<((value: any) => React.ReactNode)
 
 function Select({
   getLabel,
+  children,
+  items: itemsProp,
   ...props
 }: SelectPrimitive.Root.Props<any, false> & {
   getLabel?: (value: any) => React.ReactNode
 }) {
+  const autoItems = React.useMemo(() => {
+    if (itemsProp !== undefined) return undefined
+    const items: Record<string, React.ReactNode> = {}
+    let found = false
+    function walk(node: React.ReactNode) {
+      React.Children.forEach(node, (child) => {
+        if (!React.isValidElement<{ value?: unknown; children?: React.ReactNode }>(child)) return
+        if (child.type === SelectItem) {
+          const { value: val, children: label } = child.props
+          if (val != null) {
+            items[String(val)] = label
+            found = true
+          }
+          return
+        }
+        if (child.props.children) {
+          walk(child.props.children)
+        }
+      })
+    }
+    walk(children)
+    return found ? items : undefined
+  }, [children, itemsProp])
+
   return (
     <SelectLabelContext.Provider value={getLabel ?? null}>
-      <SelectPrimitive.Root {...props} />
+      <SelectPrimitive.Root items={autoItems ?? itemsProp} {...props}>
+        {children}
+      </SelectPrimitive.Root>
     </SelectLabelContext.Provider>
   )
 }
@@ -84,9 +112,9 @@ function SelectContent({
   children,
   side = "bottom",
   sideOffset = 4,
-  align = "center",
+  align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
@@ -101,13 +129,13 @@ function SelectContent({
         align={align}
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
-        className="z-50"
+        className="isolate z-50"
       >
         <SelectPrimitive.Popup
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            "max-h-60 w-(--anchor-width) min-w-36 overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10",
+            "z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             className
           )}
           {...props}
