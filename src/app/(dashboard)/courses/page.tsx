@@ -70,7 +70,11 @@ export default function CoursesPage() {
   const [newDivisionName, setNewDivisionName] = useState("")
   const [newDivisionShift, setNewDivisionShift] = useState("")
 
-  const isAdmin = profile?.role === "school_admin"
+  const canManage =
+    profile?.role === "super_admin" ||
+    profile?.role === "school_admin" ||
+    profile?.role === "preceptor" ||
+    profile?.role === "secretary"
 
   const deleteCourseMutation = useMutation({
     mutationFn: (id: string) => courseService.delete(id),
@@ -170,7 +174,7 @@ export default function CoursesPage() {
         title="Cursos"
         description="Gestione los cursos y divisiones de la institución"
       >
-        {isAdmin && (
+        {canManage && (
           <Button onClick={() => setCourseDialogOpen(true)}>
             <Plus />
             Nuevo Curso
@@ -188,7 +192,7 @@ export default function CoursesPage() {
           title="No hay cursos"
           description="Cree su primer curso para comenzar"
           action={
-            isAdmin
+            canManage
               ? {
                   label: "Nuevo Curso",
                   onClick: () => setCourseDialogOpen(true),
@@ -221,7 +225,7 @@ export default function CoursesPage() {
                 })
                 setDeleteDialogOpen(true)
               }}
-              isAdmin={isAdmin}
+              canManage={canManage}
             />
           ))}
         </div>
@@ -355,7 +359,7 @@ function CourseCard({
   onAddDivision,
   onDeleteCourse,
   onDeleteDivision,
-  isAdmin,
+  canManage,
 }: {
   course: { id: string; name: string }
   isExpanded: boolean
@@ -363,7 +367,7 @@ function CourseCard({
   onAddDivision: () => void
   onDeleteCourse: () => void
   onDeleteDivision: (id: string, name: string) => void
-  isAdmin: boolean
+  canManage: boolean
 }) {
   const { data: divisions, isLoading: divisionsLoading } = useDivisions(
     isExpanded ? course.id : ""
@@ -378,7 +382,7 @@ function CourseCard({
             <CardTitle>{course.name}</CardTitle>
           </div>
           <div className="flex items-center gap-1">
-            {isAdmin && (
+            {canManage && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -436,7 +440,7 @@ function CourseCard({
                       )}
                     </div>
                   </div>
-                  {isAdmin && (
+                  {canManage && (
                     <Button
                       variant="ghost"
                       size="icon-xs"
@@ -450,7 +454,7 @@ function CourseCard({
             </div>
           )}
 
-          {isAdmin && (
+          {canManage && (
             <>
               <Separator className="my-3" />
               <Button
