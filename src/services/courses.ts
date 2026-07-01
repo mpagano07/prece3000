@@ -85,7 +85,8 @@ export class CourseService {
   static async createDivision(
     supabase: SupabaseClient,
     data: Pick<Division, "school_id" | "course_id" | "name" | "academic_year_id"> & {
-      shift?: string
+      shift?: string | null
+      preceptor_id?: string | null
     }
   ): Promise<Division> {
     const { data: division, error } = await supabase
@@ -101,7 +102,7 @@ export class CourseService {
   static async updateDivision(
     supabase: SupabaseClient,
     id: string,
-    data: Partial<Pick<Division, "name" | "shift">>
+    data: Partial<Pick<Division, "name" | "shift" | "preceptor_id">>
   ): Promise<Division> {
     const { data: division, error } = await supabase
       .from("divisions")
@@ -136,15 +137,16 @@ async function ensureContext(client = createClient()) {
       .select("school_id")
       .eq("id", cachedUserId)
       .maybeSingle()
-    cachedSchoolId = profile?.school_id ?? ""
+    if (!profile?.school_id) throw new Error("Profile has no associated school")
+    cachedSchoolId = profile.school_id
   }
-  return { supabase: client, userId: cachedUserId, schoolId: cachedSchoolId }
+  return { supabase: client, userId: cachedUserId, schoolId: cachedSchoolId! }
 }
 
 export const courseService = {
   async getAll(academicYearId?: string) {
     const { supabase, schoolId } = await ensureContext()
-    return CourseService.getBySchool(supabase, schoolId ?? "", academicYearId)
+    return CourseService.getBySchool(supabase, schoolId, academicYearId)
   },
   async getDivisions(courseId: string) {
     const { supabase } = await ensureContext()
@@ -154,7 +156,7 @@ export const courseService = {
     const { supabase } = await ensureContext()
     return CourseService.create(supabase, data)
   },
-  async createDivision(data: Omit<Division, "id">) {
+  async createDivision(data: Parameters<typeof CourseService.createDivision>[1]) {
     const { supabase } = await ensureContext()
     return CourseService.createDivision(supabase, {
       ...data,
@@ -164,6 +166,10 @@ export const courseService = {
   async delete(id: string) {
     const { supabase } = await ensureContext()
     return CourseService.delete(supabase, id)
+  },
+  async updateDivision(id: string, data: Partial<Pick<Division, "name" | "shift" | "preceptor_id">>) {
+    const { supabase } = await ensureContext()
+    return CourseService.updateDivision(supabase, id, data)
   },
   async deleteDivision(id: string) {
     const { supabase } = await ensureContext()

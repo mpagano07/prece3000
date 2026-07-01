@@ -42,12 +42,35 @@ export function useCreateCourse() {
   })
 }
 
+export function useUpdateDivision() {
+  const queryClient = useQueryClient()
+  const { school } = useAuth()
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string
+      data: Partial<Pick<Division, "name" | "shift" | "preceptor_id">>
+    }) => courseService.updateDivision(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["courses", school?.id] })
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Error al actualizar división"
+      )
+    },
+  })
+}
+
 export function useCreateDivision() {
   const queryClient = useQueryClient()
   const { school } = useAuth()
 
   return useMutation({
-    mutationFn: (data: Omit<Division, "id">) =>
+    mutationFn: (data: Parameters<typeof courseService.createDivision>[0]) =>
       courseService.createDivision(data),
     onSuccess: () => {
       toast.success("División creada correctamente")

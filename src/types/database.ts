@@ -74,6 +74,7 @@ export interface Division {
   name: string
   shift: string | null
   academic_year_id: string
+  preceptor_id: string | null
 }
 
 export interface Subject {

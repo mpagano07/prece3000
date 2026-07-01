@@ -44,6 +44,22 @@ export class TeacherService {
     return teachers ?? []
   }
 
+  static async getPreceptorsBySchool(
+    supabase: SupabaseClient,
+    schoolId: string
+  ): Promise<Profile[]> {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("school_id", schoolId)
+      .eq("role", "preceptor")
+      .order("last_name", { ascending: true })
+      .order("first_name", { ascending: true })
+
+    if (error) throw new Error(`Error fetching preceptors: ${error.message}`)
+    return data ?? []
+  }
+
   static async create(
     supabase: SupabaseClient,
     data: Pick<Profile, "school_id" | "first_name" | "last_name" | "email"> & {

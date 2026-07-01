@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import type { School } from "@/types/database"
+import type { AcademicYear, School } from "@/types/database"
 
 export class SchoolService {
   static async getAll(supabase: SupabaseClient): Promise<School[]> {
@@ -61,6 +61,21 @@ export class SchoolService {
       .eq("id", id)
 
     if (error) throw new Error(`Error deleting school: ${error.message}`)
+  }
+
+  static async getActiveAcademicYear(
+    supabase: SupabaseClient,
+    schoolId: string
+  ): Promise<AcademicYear | null> {
+    const { data, error } = await supabase
+      .from("academic_years")
+      .select("*")
+      .eq("school_id", schoolId)
+      .eq("active", true)
+      .maybeSingle()
+
+    if (error) throw new Error(`Error fetching active academic year: ${error.message}`)
+    return data
   }
 
   static async getStats(

@@ -320,15 +320,16 @@ async function ensureContext(client = createClient()) {
       .select("school_id")
       .eq("id", cachedUserId)
       .maybeSingle()
-    cachedSchoolId = profile?.school_id ?? ""
+    if (!profile?.school_id) throw new Error("Profile has no associated school")
+    cachedSchoolId = profile.school_id
   }
-  return { supabase: client, userId: cachedUserId, schoolId: cachedSchoolId }
+  return { supabase: client, userId: cachedUserId, schoolId: cachedSchoolId! }
 }
 
 export const studentService = {
   async getAll(divisionId?: string) {
     const { supabase, schoolId } = await ensureContext()
-    return StudentService.getAll(supabase, schoolId ?? "", divisionId)
+    return StudentService.getAll(supabase, schoolId, divisionId)
   },
   async getById(id: string) {
     const { supabase } = await ensureContext()
@@ -348,6 +349,6 @@ export const studentService = {
   },
   async search(query: string) {
     const { supabase, schoolId } = await ensureContext()
-    return StudentService.search(supabase, schoolId ?? "", query)
+    return StudentService.search(supabase, schoolId, query)
   },
 }
