@@ -92,9 +92,10 @@ async function ensureContext(client = createClient()) {
       .select("school_id")
       .eq("id", cachedUserId)
       .maybeSingle()
-    cachedSchoolId = profile?.school_id ?? ""
+    if (!profile?.school_id) throw new Error("Profile has no associated school")
+    cachedSchoolId = profile.school_id
   }
-  return { supabase: client, userId: cachedUserId, schoolId: cachedSchoolId }
+  return { supabase: client, userId: cachedUserId, schoolId: cachedSchoolId! }
 }
 
 export const documentService = {
@@ -107,11 +108,11 @@ export const documentService = {
     if (!data.file) throw new Error("File is required")
     return DocumentService.upload(
       supabase,
-      schoolId ?? "",
+      schoolId,
       data.student_id,
       data.file,
       data.type as DocumentType,
-      userId ?? ""
+      userId
     )
   },
   async delete(documentId: string) {

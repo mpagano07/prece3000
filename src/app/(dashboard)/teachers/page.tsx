@@ -50,7 +50,8 @@ function useTeachers() {
     queryKey: ["teachers", school?.id],
     queryFn: async () => {
       const supabase = createClient()
-      return TeacherService.getBySchool(supabase, school?.id ?? "")
+      if (!school?.id) throw new Error("No se encontró la institución asociada")
+      return TeacherService.getBySchool(supabase, school.id)
     },
     enabled: !!school?.id,
   })
@@ -219,6 +220,7 @@ function TeacherForm({
   const [lastName, setLastName] = useState(teacher?.last_name || "")
   const [email, setEmail] = useState(teacher?.email || "")
   const [phone, setPhone] = useState(teacher?.phone || "")
+  const [password, setPassword] = useState("")
   const [saving, setSaving] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -229,18 +231,29 @@ function TeacherForm({
       if (teacher) {
         await TeacherService.update(supabase, teacher.id, { first_name: firstName, last_name: lastName, email, phone })
         toast.success("Docente actualizado correctamente")
+        queryClient.invalidateQueries({ queryKey: ["teachers"] })
+        onSuccess()
       } else {
-        await TeacherService.create(supabase, {
-          school_id: school?.id ?? "",
-          first_name: firstName,
-          last_name: lastName,
-          email,
-          phone: phone || undefined,
+        if (!school?.id) throw new Error("No se encontró la institución asociada")
+        if (!password) throw new Error("La contraseña es requerida")
+        const res = await fetch("/api/users/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            first_name: firstName,
+            last_name: lastName,
+            role: "teacher",
+            school_id: school.id,
+          }),
         })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
         toast.success("Docente creado correctamente")
+        queryClient.invalidateQueries({ queryKey: ["teachers"] })
+        onSuccess()
       }
-      queryClient.invalidateQueries({ queryKey: ["teachers"] })
-      onSuccess()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al guardar docente")
     } finally {
@@ -297,6 +310,18 @@ function TeacherForm({
             onChange={(e) => setPhone(e.target.value)}
           />
         </div>
+        {!teacher && (
+          <div className="space-y-2">
+            <Label htmlFor="t-password">Contraseña</Label>
+            <Input
+              id="t-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+        )}
       </div>
       <DialogFooter>
         <Button type="submit" disabled={saving}>

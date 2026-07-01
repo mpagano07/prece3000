@@ -7,6 +7,9 @@ import {
   Trash2,
   Download,
   Search,
+  Eye,
+  X,
+  FileImage,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,7 +44,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { useStudentSearch } from "@/hooks/use-students"
 import { useStudentDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents"
 import { DOCUMENT_TYPES } from "@/lib/constants"
-import { formatDate } from "@/lib/utils"
+import { formatDate, isImageFile } from "@/lib/utils"
 import type { DocumentType } from "@/types/database"
 
 export default function DocumentsPage() {
@@ -50,6 +53,7 @@ export default function DocumentsPage() {
   const [selectedStudentName, setSelectedStudentName] = useState("")
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<{ name: string; url: string; type: string } | null>(null)
 
   const { data: students } = useStudentSearch(studentSearch)
   const { data: documents, isLoading, error } = useStudentDocuments(
@@ -135,50 +139,90 @@ export default function DocumentsPage() {
       )}
 
       {selectedStudentId && documents && documents.length > 0 && (
-        <div className="grid gap-3">
-          {documents.map((doc) => (
-            <Card key={doc.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <FileText className="size-5" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-sm">{doc.name}</CardTitle>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(doc.uploaded_at)}
-                      </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {documents.map((doc) => {
+            const isImage = isImageFile(doc.name)
+            return (
+              <Card key={doc.id} className="overflow-hidden">
+                {isImage && (
+                  <div
+                    className="relative aspect-video cursor-pointer bg-muted"
+                    onClick={() =>
+                      setPreviewDoc({ name: doc.name, url: doc.file_url, type: "image" })
+                    }
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={doc.file_url}
+                      alt={doc.name}
+                      className="size-full object-cover"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/0 text-white/0 transition-all hover:bg-black/40 hover:text-white">
+                      <Eye className="size-5" />
+                      <span className="text-sm font-medium">Vista previa</span>
                     </div>
                   </div>
-                  <Badge variant="secondary">
-                    {DOCUMENT_TYPES.find((t) => t.value === doc.type)?.label || doc.type}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
-                    <Button variant="outline" size="sm">
-                      <Download className="size-3.5" />
-                      Descargar
+                )}
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        {isImage ? (
+                          <FileImage className="size-5" />
+                        ) : (
+                          <FileText className="size-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <CardTitle className="truncate text-sm">{doc.name}</CardTitle>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(doc.uploaded_at)}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0">
+                      {DOCUMENT_TYPES.find((t) => t.value === doc.type)?.label || doc.type}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPreviewDoc({ name: doc.name, url: doc.file_url, type: isImage ? "image" : "pdf" })
+                      }
+                    >
+                      <Eye className="size-3.5" />
+                      Ver
                     </Button>
-                  </a>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteId(doc.id)}
-                  >
-                    <Trash2 className="size-3.5" />
-                    Eliminar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    <a href={doc.file_url} target="_blank" rel="noopener noreferrer" download>
+                      <Button variant="outline" size="sm">
+                        <Download className="size-3.5" />
+                        Descargar
+                      </Button>
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteId(doc.id)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
+
+      <DocumentPreviewDialog
+        doc={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
 
       <ConfirmDialog
         open={!!deleteId}
@@ -195,6 +239,59 @@ export default function DocumentsPage() {
         }}
       />
     </div>
+  )
+}
+
+function DocumentPreviewDialog({
+  doc,
+  onClose,
+}: {
+  doc: { name: string; url: string; type: string } | null
+  onClose: () => void
+}) {
+  return (
+    <Dialog open={!!doc} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="truncate">{doc?.name ?? ""}</DialogTitle>
+            <Button variant="ghost" size="icon-sm" onClick={onClose}>
+              <X className="size-4" />
+            </Button>
+          </div>
+        </DialogHeader>
+        <div className="flex items-center justify-center rounded-lg bg-muted/50 p-2">
+          {doc?.type === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={doc.url}
+              alt={doc.name}
+              className="max-h-[70vh] w-full rounded-md object-contain"
+            />
+          ) : doc ? (
+            <iframe
+              src={doc.url}
+              className="h-[70vh] w-full rounded-md"
+              title={doc.name}
+            />
+          ) : null}
+        </div>
+        <DialogFooter>
+          <a
+            href={doc?.url ?? ""}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="w-full sm:w-auto"
+          >
+            <Button className="w-full">
+              <Download className="size-4" />
+              Descargar
+            </Button>
+          </a>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

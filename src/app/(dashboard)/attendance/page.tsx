@@ -118,8 +118,8 @@ export default function AttendancePage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-2">
+          <div className="flex flex-col gap-4 sm:hidden">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Curso</label>
               <Select
                 value={selectedCourseId}
@@ -140,8 +140,7 @@ export default function AttendancePage() {
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="flex-1 space-y-2">
+            <div className="space-y-2">
               <label className="text-sm font-medium">División</label>
               <Select
                 value={selectedDivisionId}
@@ -161,8 +160,7 @@ export default function AttendancePage() {
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="w-full sm:w-44 space-y-2">
+            <div className="space-y-2">
               <label className="text-sm font-medium">Fecha</label>
               <Input
                 type="date"
@@ -170,11 +168,64 @@ export default function AttendancePage() {
                 onChange={(e) => setSelectedDate(e.target.value)}
               />
             </div>
-
             <Button
               onClick={handleTakeAttendance}
               disabled={!selectedDivisionId}
-              className="w-full sm:w-auto"
+              className="w-full"
+            >
+              <ClipboardCheck />
+              Tomar Asistencia
+            </Button>
+          </div>
+
+          <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_auto_auto] sm:gap-4 sm:items-end">
+            <label className="text-sm font-medium">Curso</label>
+            <label className="text-sm font-medium">División</label>
+            <label className="text-sm font-medium">Fecha</label>
+            <div />
+            <Select
+              value={selectedCourseId}
+              onValueChange={(v) => {
+                setSelectedCourseId(v ?? "")
+                setSelectedDivisionId("")
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Seleccionar curso" />
+              </SelectTrigger>
+              <SelectContent>
+                {courses?.map((course) => (
+                  <SelectItem key={course.id} value={course.id}>
+                    {course.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={selectedDivisionId}
+              onValueChange={(v) => setSelectedDivisionId(v ?? "")}
+              disabled={!selectedCourseId || divisionsLoading}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Seleccionar división" />
+              </SelectTrigger>
+              <SelectContent>
+                {divisions?.map((div) => (
+                  <SelectItem key={div.id} value={div.id}>
+                    {div.name}
+                    {div.shift && ` (${div.shift})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
+            <Button
+              onClick={handleTakeAttendance}
+              disabled={!selectedDivisionId}
             >
               <ClipboardCheck />
               Tomar Asistencia

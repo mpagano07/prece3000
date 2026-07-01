@@ -1,6 +1,6 @@
 "use client"
 
-import { use } from "react"
+import { use, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { useStudent, useStudentHistory } from "@/hooks/use-students"
@@ -13,6 +13,13 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import {
   Tabs,
   TabsList,
@@ -36,6 +43,9 @@ import {
   Clock,
   AlertTriangle,
   ChevronRight,
+  Eye,
+  Download,
+  X,
 } from "lucide-react"
 import { getInitials, formatDate, formatDateTime } from "@/lib/utils"
 import {
@@ -60,6 +70,7 @@ export default function StudentDetailPage({ params }: PageProps) {
   const { school } = useAuth()
   const { data: student, isLoading, error } = useStudent(id)
   const { data: history, isLoading: historyLoading } = useStudentHistory(id)
+  const [previewDoc, setPreviewDoc] = useState<{ name: string; url: string } | null>(null)
   const { data: guardians } = useQuery({
     queryKey: ["students", school?.id, id, "guardians"],
     queryFn: async () => {
@@ -640,10 +651,10 @@ export default function StudentDetailPage({ params }: PageProps) {
                                   key={doc.id}
                                   className="flex items-center justify-between rounded-lg border p-3"
                                 >
-                                  <div className="flex items-center gap-3">
-                                    <FileText className="size-4 text-muted-foreground" />
-                                    <div>
-                                      <p className="text-sm font-medium">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                                    <div className="min-w-0">
+                                      <p className="truncate text-sm font-medium">
                                         {doc.name}
                                       </p>
                                       <p className="text-xs text-muted-foreground">
@@ -651,15 +662,27 @@ export default function StudentDetailPage({ params }: PageProps) {
                                       </p>
                                     </div>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={() =>
-                                      window.open(doc.file_url, "_blank")
-                                    }
-                                  >
-                                    <ChevronRight className="size-4" />
-                                  </Button>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() =>
+                                        setPreviewDoc({ name: doc.name, url: doc.file_url })
+                                      }
+                                    >
+                                      <Eye className="size-4" />
+                                    </Button>
+                                    <a
+                                      href={doc.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      download
+                                    >
+                                      <Button variant="ghost" size="icon-sm">
+                                        <Download className="size-4" />
+                                      </Button>
+                                    </a>
+                                  </div>
                                 </div>
                               ))}
                           </div>
@@ -682,6 +705,66 @@ export default function StudentDetailPage({ params }: PageProps) {
           </Tabs>
         </div>
       </div>
+
+      <DocumentPreviewDialog
+        doc={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
     </div>
+  )
+}
+
+function DocumentPreviewDialog({
+  doc,
+  onClose,
+}: {
+  doc: { name: string; url: string } | null
+  onClose: () => void
+}) {
+  const isImage = doc ? /\.(jpg|jpeg|png|webp)$/i.test(doc.url) : false
+
+  return (
+    <Dialog open={!!doc} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="truncate">{doc?.name ?? ""}</DialogTitle>
+            <Button variant="ghost" size="icon-sm" onClick={onClose}>
+              <X className="size-4" />
+            </Button>
+          </div>
+        </DialogHeader>
+        <div className="flex items-center justify-center rounded-lg bg-muted/50 p-2">
+          {doc && isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={doc.url}
+              alt={doc.name}
+              className="max-h-[70vh] w-full rounded-md object-contain"
+            />
+          ) : doc ? (
+            <iframe
+              src={doc.url}
+              className="h-[70vh] w-full rounded-md"
+              title={doc.name}
+            />
+          ) : null}
+        </div>
+        <DialogFooter>
+          <a
+            href={doc?.url ?? ""}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="w-full sm:w-auto"
+          >
+            <Button className="w-full">
+              <Download className="size-4" />
+              Descargar
+            </Button>
+          </a>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

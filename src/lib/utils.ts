@@ -24,6 +24,14 @@ export function formatDateTime(date: string | Date): string {
   }).format(new Date(date))
 }
 
+export function isImageFile(filename: string): boolean {
+  return /\.(jpg|jpeg|png|webp)$/i.test(filename)
+}
+
+export function isPdfFile(filename: string): boolean {
+  return /\.pdf$/i.test(filename)
+}
+
 export function getInitials(firstName: string, lastName: string): string {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
 }

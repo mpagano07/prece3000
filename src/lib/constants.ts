@@ -11,6 +11,7 @@ export const ROLES: { value: Role; label: string }[] = [
   { value: "school_admin", label: "Administrador Escolar" },
   { value: "preceptor", label: "Preceptor" },
   { value: "secretary", label: "Secretario" },
+  { value: "teacher", label: "Docente" },
 ]
 
 export const ATTENDANCE_STATUS: {
