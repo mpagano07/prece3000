@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AppSidebar } from "@/components/shared/app-sidebar"
 import { AppHeader } from "@/components/shared/app-header"
 import { MobileNav } from "@/components/shared/mobile-nav"
+import { InstallPrompt } from "@/components/shared/install-prompt"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 
 export default function DashboardLayout({
@@ -33,6 +34,8 @@ export default function DashboardLayout({
       </div>
 
       <MobileNav />
+
+      <InstallPrompt />
     </div>
   )
 }

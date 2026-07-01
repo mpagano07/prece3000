@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { RootProviders } from "@/components/shared/root-providers"
-import { InstallPrompt } from "@/components/shared/install-prompt"
+import { ServiceWorkerRegister } from "@/components/shared/service-worker-register"
 
 const inter = Inter({
   variable: "--font-sans",
@@ -43,7 +43,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <RootProviders>
           {children}
-          <InstallPrompt />
+          <ServiceWorkerRegister />
         </RootProviders>
       </body>
     </html>
