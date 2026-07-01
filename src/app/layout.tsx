@@ -1,7 +1,8 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { RootProviders } from "@/components/shared/root-providers"
+import { InstallPrompt } from "@/components/shared/install-prompt"
 
 const inter = Inter({
   variable: "--font-sans",
@@ -11,6 +12,21 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Preceptor",
   description: "Sistema de gestión escolar",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    apple: "/apple-icon.svg",
+  },
+  appleWebApp: {
+    title: "Preceptor",
+    statusBarStyle: "default",
+    capable: true,
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
+  width: "device-width",
+  initialScale: 1,
 }
 
 export default function RootLayout({
@@ -25,7 +41,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <RootProviders>{children}</RootProviders>
+        <RootProviders>
+          {children}
+          <InstallPrompt />
+        </RootProviders>
       </body>
     </html>
   )
