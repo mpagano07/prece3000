@@ -21,6 +21,11 @@ if (typeof window !== "undefined") {
   })
 }
 
+function isMobile(): boolean {
+  if (typeof window === "undefined") return false
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent)
+}
+
 function isiOS(): boolean {
   if (typeof window === "undefined") return false
   const ua = window.navigator.userAgent
@@ -43,15 +48,21 @@ export function InstallPrompt() {
   const dismissed = useRef(false)
 
   useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js", {
+        scope: "/",
+        updateViaCache: "none",
+      })
+    }
+  }, [])
+
+  useEffect(() => {
     if (isStandalone()) return
     if (dismissed.current) return
 
-    if (isiOS()) {
-      setVisible(true)
-      return
-    }
+    if (!isMobile()) return
 
-    if (deferredInstallPrompt) {
+    if (deferredInstallPrompt || isiOS()) {
       setVisible(true)
       return
     }
@@ -63,13 +74,21 @@ export function InstallPrompt() {
     }
 
     window.addEventListener("beforeinstallprompt", onBeforeInstall)
-    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall)
+
+    const timer = setTimeout(() => {
+      setVisible(true)
+    }, 4000)
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall)
+      clearTimeout(timer)
+    }
   }, [])
 
   function handleInstall() {
     if (!deferredInstallPrompt) return
     deferredInstallPrompt.prompt()
-    deferredInstallPrompt.userChoice.then(() => {
+    deferredInstallPrompt.userChoice.finally(() => {
       deferredInstallPrompt = null
       setVisible(false)
     })
@@ -83,8 +102,8 @@ export function InstallPrompt() {
   if (!visible) return null
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background p-4 shadow-lg">
-      <div className="mx-auto flex max-w-lg items-start justify-between gap-4">
+    <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background p-4 pb-6 shadow-lg">
+      <div className="mx-auto flex max-w-lg items-start justify-between gap-3">
         <div className="min-w-0 text-sm">
           <p className="font-semibold">Instalar Preceptor</p>
           {isiOS() ? (
@@ -98,14 +117,19 @@ export function InstallPrompt() {
                 Agregar a pantalla de inicio
               </span>
             </p>
-          ) : (
+          ) : deferredInstallPrompt ? (
             <p className="text-muted-foreground">
               Instalá la app para acceder más rápido
             </p>
+          ) : (
+            <p className="text-muted-foreground">
+              Abrí el menú del navegador →{" "}
+              <span className="font-medium">Agregar a pantalla de inicio</span>
+            </p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {!isiOS() && deferredInstallPrompt && (
+        <div className="flex shrink-0 items-center gap-1">
+          {deferredInstallPrompt && (
             <Button size="sm" onClick={handleInstall}>
               Instalar
             </Button>
