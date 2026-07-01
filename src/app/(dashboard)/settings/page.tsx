@@ -34,7 +34,6 @@ import { toast } from "sonner"
 export default function SettingsPage() {
   const { user, profile, school } = useAuth()
   const { theme, setTheme } = useTheme()
-  const supabase = createClient()
 
   const [firstName, setFirstName] = useState(profile?.first_name || "")
   const [lastName, setLastName] = useState(profile?.last_name || "")
@@ -58,6 +57,7 @@ export default function SettingsPage() {
     if (!profile) return
     setSaving(true)
     try {
+      const supabase = createClient()
       const { error } = await supabase
         .from("profiles")
         .update({ first_name: firstName, last_name: lastName, phone })
@@ -76,6 +76,7 @@ export default function SettingsPage() {
     if (!school) return
     setSavingSchool(true)
     try {
+      const supabase = createClient()
       const { error } = await supabase
         .from("schools")
         .update({ name: schoolName, address: schoolAddress, phone: schoolPhone, email: schoolEmail })
@@ -101,6 +102,7 @@ export default function SettingsPage() {
     }
     setChangingPassword(true)
     try {
+      const supabase = createClient()
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
       toast.success("Contraseña actualizada correctamente")

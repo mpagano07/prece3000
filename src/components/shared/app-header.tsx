@@ -1,10 +1,9 @@
 "use client"
 
 import { useTheme } from "@/contexts/theme-context"
-import { Bell, Moon, Search, Sun, Menu } from "lucide-react"
+import { Moon, Sun, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/contexts/auth-context"
 import {
   DropdownMenu,
@@ -40,11 +39,6 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
 
       <div className="flex-1" />
 
-      <Button variant="ghost" size="icon-sm">
-        <Search className="size-4" />
-        <span className="sr-only">Buscar</span>
-      </Button>
-
       <Button
         variant="ghost"
         size="icon-sm"
@@ -52,17 +46,6 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
       >
         {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
         <span className="sr-only">Cambiar tema</span>
-      </Button>
-
-      <Button variant="ghost" size="icon-sm" className="relative">
-        <Bell className="size-4" />
-        <Badge
-          variant="destructive"
-          className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full p-0 text-[10px]"
-        >
-          3
-        </Badge>
-        <span className="sr-only">Notificaciones</span>
       </Button>
 
       <DropdownMenu>

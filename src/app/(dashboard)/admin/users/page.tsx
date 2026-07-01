@@ -59,7 +59,6 @@ const CREATABLE_ROLES = ["school_admin", "preceptor", "secretary", "teacher"] as
 export default function AdminUsersPage() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const supabase = createClient()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newUser, setNewUser] = useState<{
     email: string
@@ -80,6 +79,7 @@ export default function AdminUsersPage() {
   const { data: schools } = useQuery({
     queryKey: ["schools"],
     queryFn: async () => {
+      const supabase = createClient()
       const { data, error } = await supabase
         .from("schools")
         .select("id, name")
@@ -100,6 +100,7 @@ export default function AdminUsersPage() {
   const { data: users, isLoading } = useQuery({
     queryKey: ["users", selectedSchool],
     queryFn: async () => {
+      const supabase = createClient()
       let query = supabase
         .from("profiles")
         .select("*")

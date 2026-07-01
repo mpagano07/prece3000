@@ -56,7 +56,6 @@ function useSchools() {
 
 export default function AdminSchoolsPage() {
   const { profile } = useAuth()
-  const supabase = createClient()
   const queryClient = useQueryClient()
   const { data: schools, isLoading, error } = useSchools()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
