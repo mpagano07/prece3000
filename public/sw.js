@@ -22,18 +22,24 @@ self.addEventListener("activate", (event) => {
   )
 })
 
+function cacheResponse(request, response) {
+  try {
+    const cloned = response.clone()
+    caches.open(CACHE).then((cache) => cache.put(request, cloned)).catch(() => {})
+  } catch {
+    // Response body ya fue consumido, ignorar
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url)
 
-  // Ignorar peticiones que no sean GET
   if (event.request.method !== "GET") return
 
-  // Ignorar llamadas a la API de Supabase (React Query maneja esta caché)
   if (url.pathname.startsWith("/rest/v1/") || url.pathname.startsWith("/auth/v1/")) {
     return
   }
 
-  // Si es navegación HTML, intentar red primero, sino mostrar página offline
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request).catch(() => caches.match(OFFLINE_URL))
@@ -41,20 +47,17 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Para archivos estáticos de Next.js (_next/static) y recursos locales, usar Stale-While-Revalidate
   const isStaticAsset = url.pathname.startsWith("/_next/static/") || ASSETS.includes(url.pathname)
 
   if (isStaticAsset) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request).then((networkResponse) => {
-          caches.open(CACHE).then((cache) => {
-            cache.put(event.request, networkResponse.clone())
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            cacheResponse(event.request, networkResponse)
+            return networkResponse
           })
-          return networkResponse
-        }).catch(() => {
-          // Ignorar errores de red en la actualización en segundo plano
-        })
+          .catch(() => {})
 
         return cachedResponse || fetchPromise
       })
@@ -62,12 +65,10 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Para el resto de peticiones GET, usar Network First, fallback to Cache
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const responseClone = response.clone()
-        caches.open(CACHE).then((cache) => cache.put(event.request, responseClone))
+        cacheResponse(event.request, response)
         return response
       })
       .catch(() => caches.match(event.request))
