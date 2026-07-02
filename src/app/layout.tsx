@@ -12,9 +12,8 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Preceptor",
   description: "Sistema de gestión escolar",
-  manifest: "/manifest.webmanifest",
   icons: {
-    apple: "/apple-icon.svg",
+    apple: "/icon-192.png",
   },
   appleWebApp: {
     title: "Preceptor",

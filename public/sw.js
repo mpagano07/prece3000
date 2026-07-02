@@ -4,9 +4,8 @@ const OFFLINE_URL = "/offline.html"
 const ASSETS = [
   "/",
   OFFLINE_URL,
-  "/icon-192.svg",
-  "/icon-512.svg",
-  "/apple-icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
 ]
 
 self.addEventListener("install", (event) => {
@@ -52,8 +51,8 @@ self.addEventListener("push", (event) => {
   const data = event.data.json()
   const options = {
     body: data.body,
-    icon: data.icon || "/icon-192.svg",
-    badge: "/icon-192.svg",
+    icon: data.icon || "/icon-192.png",
+    badge: "/icon-192.png",
     vibrate: [100, 50, 100],
     data: {
       url: data.url || "/",
