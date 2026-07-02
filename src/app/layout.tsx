@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { RootProviders } from "@/components/shared/root-providers"
 import { ServiceWorkerRegister } from "@/components/shared/service-worker-register"
+import { NetworkStatus } from "@/components/shared/network-status"
 
 const inter = Inter({
   variable: "--font-sans",
@@ -49,6 +50,7 @@ export default function RootLayout({
         <RootProviders>
           {children}
           <ServiceWorkerRegister />
+          <NetworkStatus />
         </RootProviders>
       </body>
     </html>

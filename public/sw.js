@@ -23,26 +23,54 @@ self.addEventListener("activate", (event) => {
 })
 
 self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url)
+
+  // Ignorar peticiones que no sean GET
+  if (event.request.method !== "GET") return
+
+  // Ignorar llamadas a la API de Supabase (React Query maneja esta caché)
+  if (url.pathname.startsWith("/rest/v1/") || url.pathname.startsWith("/auth/v1/")) {
+    return
+  }
+
+  // Si es navegación HTML, intentar red primero, sino mostrar página offline
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(() =>
-        caches.match(OFFLINE_URL)
-      )
+      fetch(event.request).catch(() => caches.match(OFFLINE_URL))
     )
     return
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        return caches.open(CACHE).then((cache) => {
-          if (event.request.method === "GET") {
-            cache.put(event.request, response.clone())
-          }
-          return response
+  // Para archivos estáticos de Next.js (_next/static) y recursos locales, usar Stale-While-Revalidate
+  const isStaticAsset = url.pathname.startsWith("/_next/static/") || ASSETS.includes(url.pathname)
+
+  if (isStaticAsset) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request).then((networkResponse) => {
+          caches.open(CACHE).then((cache) => {
+            cache.put(event.request, networkResponse.clone())
+          })
+          return networkResponse
+        }).catch(() => {
+          // Ignorar errores de red en la actualización en segundo plano
         })
+
+        return cachedResponse || fetchPromise
       })
-    })
+    )
+    return
+  }
+
+  // Para el resto de peticiones GET, usar Network First, fallback to Cache
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        const responseClone = response.clone()
+        caches.open(CACHE).then((cache) => cache.put(event.request, responseClone))
+        return response
+      })
+      .catch(() => caches.match(event.request))
   )
 })
 
