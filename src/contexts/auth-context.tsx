@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [school, setSchool] = useState<School | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
 
   const fetchProfile = useCallback(async (userId: string) => {
     const { data: profileData, error } = await supabase
