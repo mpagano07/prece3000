@@ -97,9 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(user)
             await fetchProfile(user.id)
           }
+          setIsLoading(false)
+          router.refresh()
         }
-        setIsLoading(false)
-        router.refresh()
       }
     )
 
