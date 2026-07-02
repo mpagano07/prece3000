@@ -31,6 +31,9 @@ export function useMarkAttendance() {
       queryClient.invalidateQueries({
         queryKey: ["attendance", school?.id, variables.division_id],
       })
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard", school?.id, "stats"],
+      })
     },
     onError: (error) => {
       toast.error(
@@ -58,6 +61,9 @@ export function useMarkBulkAttendance() {
       toast.success("Asistencia registrada correctamente")
       queryClient.invalidateQueries({
         queryKey: ["attendance", school?.id, variables.divisionId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard", school?.id, "stats"],
       })
     },
     onError: (error) => {

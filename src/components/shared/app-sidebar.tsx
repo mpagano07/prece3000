@@ -8,7 +8,6 @@ import type { Role } from "@/types/database"
 import {
   LayoutDashboard,
   Users,
-  ClipboardCheck,
   BookOpen,
   Calendar,
   Notebook,
@@ -36,7 +35,6 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
   { href: "/students", label: "Alumnos", icon: Users, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
-  { href: "/attendance", label: "Asistencia", icon: ClipboardCheck, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
   { href: "/book", label: "Libro de Preceptor", icon: BookOpen, roles: ["super_admin", "preceptor"] },
   { href: "/calendar", label: "Calendario", icon: Calendar, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
   { href: "/agenda", label: "Agenda", icon: Notebook, roles: ["super_admin", "preceptor"] },

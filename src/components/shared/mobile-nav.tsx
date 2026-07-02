@@ -3,13 +3,12 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Users, ClipboardCheck, BookOpen, Settings } from "lucide-react"
+import { LayoutDashboard, Users, BookOpen, Settings } from "lucide-react"
 
 const mobileItems = [
   { href: "/dashboard", label: "Panel", icon: LayoutDashboard },
   { href: "/students", label: "Alumnos", icon: Users },
-  { href: "/attendance", label: "Asistencia", icon: ClipboardCheck },
-  { href: "/book", label: "Libro", icon: BookOpen },
+  { href: "/courses", label: "Cursos", icon: BookOpen },
   { href: "/settings", label: "Ajustes", icon: Settings },
 ]
 

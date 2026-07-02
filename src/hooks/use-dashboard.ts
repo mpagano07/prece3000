@@ -7,7 +7,7 @@ export function useDashboardStats(divisionId?: string) {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "stats", divisionId],
-    queryFn: () => dashboardService.getStats(divisionId),
+    queryFn: () => dashboardService.getStats(school!.id, divisionId),
     enabled: !!school?.id,
   })
 }
@@ -17,7 +17,7 @@ export function useDashboardBirthdays() {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "birthdays"],
-    queryFn: () => dashboardService.getBirthdays(),
+    queryFn: () => dashboardService.getBirthdays(school!.id),
     enabled: !!school?.id,
   })
 }
@@ -27,7 +27,7 @@ export function useDashboardAlerts() {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "alerts"],
-    queryFn: () => dashboardService.getAlerts(),
+    queryFn: () => dashboardService.getAlerts(school!.id),
     enabled: !!school?.id,
   })
 }
@@ -37,7 +37,7 @@ export function useUpcomingEvents() {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "upcoming-events"],
-    queryFn: () => dashboardService.getUpcomingEvents(),
+    queryFn: () => dashboardService.getUpcomingEvents(school!.id),
     enabled: !!school?.id,
   })
 }
@@ -47,7 +47,7 @@ export function useNearFailingStudents() {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "near-failing"],
-    queryFn: () => dashboardService.getNearFailingStudents(),
+    queryFn: () => dashboardService.getNearFailingStudents(school!.id),
     enabled: !!school?.id,
   })
 }

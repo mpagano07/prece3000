@@ -136,46 +136,25 @@ export class DashboardService {
   }
 }
 
-let cachedUserId: string | null = null
-
-async function ensureContext(client = createClient()) {
-  if (!cachedUserId) {
-    const { data: { user } } = await client.auth.getUser()
-    if (!user) throw new Error("Not authenticated")
-    cachedUserId = user.id
-  }
-  const { getActiveSchoolId } = await import("@/lib/active-school")
-  const activeSchoolId = getActiveSchoolId()
-  if (activeSchoolId) {
-    return { supabase: client, userId: cachedUserId, schoolId: activeSchoolId }
-  }
-  const { data: profile } = await client
-    .from("profiles")
-    .select("school_id")
-    .eq("id", cachedUserId)
-    .maybeSingle()
-  return { supabase: client, userId: cachedUserId, schoolId: profile?.school_id ?? "" }
-}
-
 export const dashboardService = {
-  async getStats(divisionId?: string) {
-    const { supabase, schoolId } = await ensureContext()
-    return DashboardService.getStats(supabase, schoolId ?? "", divisionId)
+  async getStats(schoolId: string, divisionId?: string) {
+    const supabase = createClient()
+    return DashboardService.getStats(supabase, schoolId, divisionId)
   },
-  async getBirthdays() {
-    const { supabase, schoolId } = await ensureContext()
-    return DashboardService.getBirthdays(supabase, schoolId ?? "")
+  async getBirthdays(schoolId: string) {
+    const supabase = createClient()
+    return DashboardService.getBirthdays(supabase, schoolId)
   },
-  async getAlerts() {
-    const { supabase, schoolId } = await ensureContext()
-    return DashboardService.getAlerts(supabase, schoolId ?? "")
+  async getAlerts(schoolId: string) {
+    const supabase = createClient()
+    return DashboardService.getAlerts(supabase, schoolId)
   },
-  async getUpcomingEvents() {
-    const { supabase, schoolId } = await ensureContext()
-    return DashboardService.getUpcomingEvents(supabase, schoolId ?? "")
+  async getUpcomingEvents(schoolId: string) {
+    const supabase = createClient()
+    return DashboardService.getUpcomingEvents(supabase, schoolId)
   },
-  async getNearFailingStudents() {
-    const { supabase, schoolId } = await ensureContext()
-    return DashboardService.getNearFailing(supabase, schoolId ?? "")
+  async getNearFailingStudents(schoolId: string) {
+    const supabase = createClient()
+    return DashboardService.getNearFailing(supabase, schoolId)
   },
 }

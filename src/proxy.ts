@@ -7,7 +7,6 @@ const routePermissions: Record<string, Role[]> = {
   "/admin": ["super_admin"],
   "/admin/users": ["super_admin"],
   "/admin/schools": ["super_admin"],
-  "/attendance": ["super_admin", "preceptor", "school_admin", "director", "secretary"],
   "/students": ["super_admin", "preceptor", "school_admin", "director", "secretary"],
   "/courses": ["super_admin", "school_admin", "director"],
   "/teachers": ["super_admin", "school_admin", "director"],

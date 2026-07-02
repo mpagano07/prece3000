@@ -1,12 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useQueryClient, useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
   Plus,
-  ChevronDown,
-  ChevronRight,
   BookOpen,
   Layers,
   Trash2,
@@ -14,16 +12,28 @@ import {
   GraduationCap,
   Clock,
   Search,
-  UserCheck,
-  UserX,
+  Users,
   UserRound,
+  Check,
+  ClipboardCheck,
+  X,
+  AlertCircle,
+  DoorOpen,
 } from "lucide-react"
+import { format } from "date-fns"
+import { cn, getInitials } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { useCourses, useDivisions, useCreateCourse, useCreateDivision, useUpdateDivision } from "@/hooks/use-courses"
+import {
+  useAttendance,
+  useMarkAttendance,
+  useMarkBulkAttendance,
+} from "@/hooks/use-attendance"
+import type { Attendance, AttendanceStatus } from "@/types/database"
 import { courseService } from "@/services/courses"
 import { useActiveAcademicYear } from "@/hooks/use-academic-years"
 import { usePreceptors } from "@/hooks/use-preceptors"
-import { useStudents, useStudentSearch, useUpdateStudent } from "@/hooks/use-students"
+import { useStudents } from "@/hooks/use-students"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingScreen } from "@/components/shared/loading-screen"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -42,7 +52,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card"
 import {
   Dialog,
@@ -54,6 +63,7 @@ import {
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import type { Profile } from "@/types/database"
 
 export default function CoursesPage() {
@@ -67,10 +77,6 @@ export default function CoursesPage() {
   const createCourse = useCreateCourse()
   const createDivision = useCreateDivision()
   const updateDivision = useUpdateDivision()
-  const updateStudent = useUpdateStudent()
-
-  const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set())
-  const [expandedDivisionStudents, setExpandedDivisionStudents] = useState<Set<string>>(new Set())
   const [courseDialogOpen, setCourseDialogOpen] = useState(false)
   const [divisionDialogOpen, setDivisionDialogOpen] = useState(false)
   const [courseForDivision, setCourseForDivision] = useState("")
@@ -80,9 +86,13 @@ export default function CoursesPage() {
     id: string
     name: string
   } | null>(null)
-  const [assignDialogOpen, setAssignDialogOpen] = useState(false)
-  const [assignDivisionId, setAssignDivisionId] = useState("")
-  const [assignSearch, setAssignSearch] = useState("")
+
+  const [attendanceDialogOpen, setAttendanceDialogOpen] = useState(false)
+  const [attendanceDialogDivision, setAttendanceDialogDivision] = useState<{
+    divisionId: string
+    divisionName: string
+    courseName: string
+  } | null>(null)
 
   const [newCourseName, setNewCourseName] = useState("")
   const [newCourseDivisionName, setNewCourseDivisionName] = useState("")
@@ -123,24 +133,6 @@ export default function CoursesPage() {
       )
     },
   })
-
-  const toggleExpand = (courseId: string) => {
-    setExpandedCourses((prev) => {
-      const next = new Set(prev)
-      if (next.has(courseId)) next.delete(courseId)
-      else next.add(courseId)
-      return next
-    })
-  }
-
-  const toggleExpandedDivisionStudents = (divisionId: string) => {
-    setExpandedDivisionStudents((prev) => {
-      const next = new Set(prev)
-      if (next.has(divisionId)) next.delete(divisionId)
-      else next.add(divisionId)
-      return next
-    })
-  }
 
   const handleCreateCourse = () => {
     if (!newCourseName.trim()) return
@@ -228,35 +220,9 @@ export default function CoursesPage() {
     })
   }
 
-  const handleRemoveStudent = (studentId: string, studentName: string) => {
-    updateStudent.mutate(
-      { id: studentId, data: { division_id: null } },
-      {
-        onSuccess: () => {
-          toast.success(`${studentName} removido de la división`)
-          queryClient.invalidateQueries({ queryKey: ["students"] })
-        },
-      }
-    )
-  }
-
-  const handleAssignStudent = (studentId: string) => {
-    if (!assignDivisionId) return
-    updateStudent.mutate(
-      { id: studentId, data: { division_id: assignDivisionId } },
-      {
-        onSuccess: () => {
-          toast.success("Estudiante asignado a la división")
-          queryClient.invalidateQueries({ queryKey: ["students"] })
-        },
-      }
-    )
-  }
-
-  const openAssignDialog = (divisionId: string) => {
-    setAssignDivisionId(divisionId)
-    setAssignSearch("")
-    setAssignDialogOpen(true)
+  const openAttendanceDialog = (divisionId: string, divisionName: string, courseName: string) => {
+    setAttendanceDialogDivision({ divisionId, divisionName, courseName })
+    setAttendanceDialogOpen(true)
   }
 
   const openDivisionDialog = (courseId: string) => {
@@ -305,10 +271,6 @@ export default function CoursesPage() {
               key={course.id}
               course={course}
               preceptors={preceptors ?? []}
-              isExpanded={expandedCourses.has(course.id)}
-              expandedDivisionStudents={expandedDivisionStudents}
-              onToggleExpand={() => toggleExpand(course.id)}
-              onToggleExpandedDivisionStudents={toggleExpandedDivisionStudents}
               onAddDivision={() => openDivisionDialog(course.id)}
               onDeleteCourse={() => {
                 setDeleteTarget({
@@ -327,8 +289,7 @@ export default function CoursesPage() {
                 setDeleteDialogOpen(true)
               }}
               onPreceptorChange={handlePreceptorChange}
-              onRemoveStudent={handleRemoveStudent}
-              onAssignStudent={openAssignDialog}
+              onAttendance={openAttendanceDialog}
               canManage={canManage}
             />
           ))}
@@ -480,13 +441,12 @@ export default function CoursesPage() {
         </DialogContent>
       </Dialog>
 
-      <AssignStudentsDialog
-        open={assignDialogOpen}
-        onOpenChange={setAssignDialogOpen}
-        divisionId={assignDivisionId}
-        search={assignSearch}
-        onSearchChange={setAssignSearch}
-        onAssign={handleAssignStudent}
+      <AttendanceDialog
+        open={attendanceDialogOpen}
+        onOpenChange={setAttendanceDialogOpen}
+        divisionId={attendanceDialogDivision?.divisionId ?? ""}
+        divisionName={attendanceDialogDivision?.divisionName ?? ""}
+        courseName={attendanceDialogDivision?.courseName ?? ""}
       />
 
       <ConfirmDialog
@@ -507,30 +467,20 @@ export default function CoursesPage() {
 function CourseCard({
   course,
   preceptors,
-  isExpanded,
-  expandedDivisionStudents,
-  onToggleExpand,
-  onToggleExpandedDivisionStudents,
   onAddDivision,
   onDeleteCourse,
   onDeleteDivision,
   onPreceptorChange,
-  onRemoveStudent,
-  onAssignStudent,
+  onAttendance,
   canManage,
 }: {
   course: { id: string; name: string }
   preceptors: Profile[]
-  isExpanded: boolean
-  expandedDivisionStudents: Set<string>
-  onToggleExpand: () => void
-  onToggleExpandedDivisionStudents: (divisionId: string) => void
   onAddDivision: () => void
   onDeleteCourse: () => void
   onDeleteDivision: (id: string, name: string) => void
   onPreceptorChange: (divisionId: string, preceptorId: string) => void
-  onRemoveStudent: (studentId: string, studentName: string) => void
-  onAssignStudent: (divisionId: string) => void
+  onAttendance: (divisionId: string, divisionName: string, courseName: string) => void
   canManage: boolean
 }) {
   const { data: divisions, isLoading: divisionsLoading } = useDivisions(course.id)
@@ -553,22 +503,11 @@ function CourseCard({
                 <Trash2 className="size-3.5 text-destructive" />
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onToggleExpand}
-            >
-              {isExpanded ? (
-                <ChevronDown className="size-4" />
-              ) : (
-                <ChevronRight className="size-4" />
-              )}
-            </Button>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className={isExpanded ? "pb-3" : ""}>
+      <CardContent className="pb-3">
         {divisionsLoading ? (
           <div className="flex items-center justify-center py-2">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -630,6 +569,14 @@ function CourseCard({
                         Sin preceptor
                       </span>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => onAttendance(div.id, div.name, course.name)}
+                      title="Tomar asistencia"
+                    >
+                      <ClipboardCheck className="size-3" />
+                    </Button>
                     {canManage && (
                       <Button
                         variant="ghost"
@@ -659,272 +606,341 @@ function CourseCard({
         )}
       </CardContent>
 
-      {isExpanded && (
-        <CardContent className="border-t pt-3">
-          {!divisions || divisions.length === 0 ? (
-            <p className="py-3 text-center text-xs text-muted-foreground">
-              Cree una división para gestionar alumnos
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {divisions.map((div) => (
-                <DivisionItem
-                  key={div.id}
-                  division={div}
-                  preceptors={preceptors}
-                  isStudentsExpanded={expandedDivisionStudents.has(div.id)}
-                  onToggleStudents={() => onToggleExpandedDivisionStudents(div.id)}
-                  onPreceptorChange={(preceptorId) => onPreceptorChange(div.id, preceptorId)}
-                  onRemoveStudent={(studentId, studentName) => onRemoveStudent(studentId, studentName)}
-                  onAssignStudent={() => onAssignStudent(div.id)}
-                  onDelete={() => onDeleteDivision(div.id, div.name)}
-                  canManage={canManage}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      )}
     </Card>
   )
 }
 
-function DivisionItem({
-  division,
-  preceptors,
-  isStudentsExpanded,
-  onToggleStudents,
-  onPreceptorChange,
-  onRemoveStudent,
-  onAssignStudent,
-  onDelete,
-  canManage,
-}: {
-  division: { id: string; name: string; shift: string | null; preceptor_id: string | null }
-  preceptors: Profile[]
-  isStudentsExpanded: boolean
-  onToggleStudents: () => void
-  onPreceptorChange: (preceptorId: string) => void
-  onRemoveStudent: (studentId: string, studentName: string) => void
-  onAssignStudent: () => void
-  onDelete: () => void
-  canManage: boolean
-}) {
-  const { data: students, isLoading: studentsLoading } = useStudents(
-    isStudentsExpanded ? division.id : ""
-  )
+const STATUS_CONFIG = {
+  present: {
+    label: "Presente",
+    color:
+      "border-green-500 text-green-700 bg-green-50 hover:bg-green-100 data-[selected=true]:bg-green-500 data-[selected=true]:text-white data-[selected=true]:border-green-500 dark:bg-green-950/20 dark:text-green-400 dark:data-[selected=true]:bg-green-600",
+    icon: Check,
+  },
+  absent: {
+    label: "Ausente",
+    color:
+      "border-red-500 text-red-700 bg-red-50 hover:bg-red-100 data-[selected=true]:bg-red-500 data-[selected=true]:text-white data-[selected=true]:border-red-500 dark:bg-red-950/20 dark:text-red-400 dark:data-[selected=true]:bg-red-600",
+    icon: X,
+  },
+  absent_justified: {
+    label: "Ausente Justif.",
+    color:
+      "border-yellow-500 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 data-[selected=true]:bg-yellow-500 data-[selected=true]:text-white data-[selected=true]:border-yellow-500 dark:bg-yellow-950/20 dark:text-yellow-400 dark:data-[selected=true]:bg-yellow-600",
+    icon: AlertCircle,
+  },
+  late: {
+    label: "Tardanza",
+    color:
+      "border-orange-500 text-orange-700 bg-orange-50 hover:bg-orange-100 data-[selected=true]:bg-orange-500 data-[selected=true]:text-white data-[selected=true]:border-orange-500 dark:bg-orange-950/20 dark:text-orange-400 dark:data-[selected=true]:bg-orange-600",
+    icon: Clock,
+  },
+  early_withdrawal: {
+    label: "Retiro Antic.",
+    color:
+      "border-blue-500 text-blue-700 bg-blue-50 hover:bg-blue-100 data-[selected=true]:bg-blue-500 data-[selected=true]:text-white data-[selected=true]:border-blue-500 dark:bg-blue-950/20 dark:text-blue-400 dark:data-[selected=true]:bg-blue-600",
+    icon: DoorOpen,
+  },
+} as const
 
-  const assignedPreceptor = preceptors.find((p) => p.id === division.preceptor_id)
-  const studentCount = students?.length ?? 0
-
-  return (
-    <div className="rounded-lg border">
-      <div className="flex items-center justify-between gap-2 p-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <Layers className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="text-sm font-medium truncate">{division.name}</span>
-          {division.shift && (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              <Clock className="mr-0.5 inline size-3" />
-              {division.shift}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {canManage && preceptors.length > 0 && (
-            <Select
-              value={division.preceptor_id ?? ""}
-              onValueChange={(v) => onPreceptorChange(v)}
-            >
-              <SelectTrigger className="h-7 w-auto gap-1 text-xs">
-                <UserRound className="size-3" />
-                <SelectValue placeholder="Preceptor" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value=" ">Sin preceptor</SelectItem>
-                {preceptors.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.last_name}, {p.first_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {!canManage && assignedPreceptor && (
-            <Badge variant="outline" className="gap-1 text-xs">
-              <UserRound className="size-3" />
-              {assignedPreceptor.last_name}, {assignedPreceptor.first_name}
-            </Badge>
-          )}
-
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={onToggleStudents}
-            title="Ver alumnos"
-          >
-            {studentsLoading ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <span className="flex items-center gap-1 text-xs font-medium">
-                <GraduationCap className="size-3.5" />
-                {studentCount}
-              </span>
-            )}
-          </Button>
-
-          {canManage && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={onDelete}
-            >
-              <Trash2 className="size-3.5 text-destructive" />
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {isStudentsExpanded && (
-        <div className="border-t px-2.5 py-2 space-y-1.5">
-          {studentsLoading ? (
-            <div className="flex items-center justify-center py-2">
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
-            </div>
-          ) : !students || students.length === 0 ? (
-            <p className="py-2 text-center text-xs text-muted-foreground">
-              Sin alumnos asignados
-            </p>
-          ) : (
-            students.map((student) => (
-              <div
-                key={student.id}
-                className="flex items-center justify-between rounded-md bg-muted/50 px-2.5 py-1.5"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <UserCheck className="size-3 shrink-0 text-muted-foreground" />
-                  <span className="text-xs truncate">
-                    {student.last_name}, {student.first_name}
-                  </span>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    DNI: {student.dni}
-                  </span>
-                </div>
-                {canManage && (
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => onRemoveStudent(student.id, `${student.last_name}, ${student.first_name}`)}
-                    title="Remover de la división"
-                  >
-                    <UserX className="size-3 text-destructive" />
-                  </Button>
-                )}
-              </div>
-            ))
-          )}
-
-          {canManage && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full mt-1"
-              onClick={onAssignStudent}
-            >
-              <Plus className="size-3.5" />
-              Asignar Alumno
-            </Button>
-          )}
-        </div>
-      )}
-    </div>
-  )
+interface StudentRecord {
+  studentId: string
+  firstName: string
+  lastName: string
+  dni: string
+  status: AttendanceStatus | null
+  observation: string | null
+  attendanceId: string | null
 }
 
-function AssignStudentsDialog({
+function AttendanceDialog({
   open,
   onOpenChange,
   divisionId,
-  search,
-  onSearchChange,
-  onAssign,
+  divisionName,
+  courseName,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   divisionId: string
-  search: string
-  onSearchChange: (search: string) => void
-  onAssign: (studentId: string) => void
+  divisionName: string
+  courseName: string
 }) {
-  const { data: searchResults, isLoading: searchLoading } = useStudentSearch(search)
+  const [attendanceDate, setAttendanceDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  const [searchQuery, setSearchQuery] = useState("")
+  const [pendingStudents, setPendingStudents] = useState<Set<string>>(new Set())
+  const [expandedObs, setExpandedObs] = useState<Set<string>>(new Set())
 
-  const availableStudents = searchResults?.filter(
-    (s) => !s.division_id || s.division_id !== divisionId
+  const { data: students, isLoading: studentsLoading } = useStudents(
+    open && !!divisionId ? divisionId : ""
   )
+  const { data: attendanceRecords, isLoading: attendanceLoading } = useAttendance(
+    open && !!divisionId ? divisionId : "",
+    open && !!divisionId ? attendanceDate : ""
+  )
+
+  const markAttendance = useMarkAttendance()
+  const markBulkAttendance = useMarkBulkAttendance()
+
+  const attendanceMap = useMemo(() => {
+    const map = new Map<string, Attendance>()
+    if (attendanceRecords) {
+      for (const record of attendanceRecords) {
+        map.set(record.student_id, record)
+      }
+    }
+    return map
+  }, [attendanceRecords])
+
+  const studentsWithAttendance = useMemo((): StudentRecord[] => {
+    if (!students) return []
+    return students.map((s) => {
+      const a = attendanceMap.get(s.id)
+      return {
+        studentId: s.id,
+        firstName: s.first_name,
+        lastName: s.last_name,
+        dni: s.dni,
+        status: a?.status ?? null,
+        observation: a?.observation ?? null,
+        attendanceId: a?.id ?? null,
+      }
+    })
+  }, [students, attendanceMap])
+
+  const filteredStudents = useMemo(() => {
+    if (!searchQuery.trim()) return studentsWithAttendance
+    const q = searchQuery.toLowerCase()
+    return studentsWithAttendance.filter(
+      (s) =>
+        s.firstName.toLowerCase().includes(q) ||
+        s.lastName.toLowerCase().includes(q) ||
+        s.dni.includes(q)
+    )
+  }, [studentsWithAttendance, searchQuery])
+
+  const isLoading = studentsLoading || attendanceLoading
+  const isSaving = markAttendance.isPending || markBulkAttendance.isPending
+  const markedCount = studentsWithAttendance.filter((s) => s.status !== null).length
+
+  const handleMarkStatus = (studentId: string, status: AttendanceStatus) => {
+    setPendingStudents((prev) => new Set(prev).add(studentId))
+    markAttendance.mutate(
+      {
+        student_id: studentId,
+        division_id: divisionId,
+        date: attendanceDate,
+        status,
+      },
+      {
+        onSettled: () => {
+          setPendingStudents((prev) => {
+            const next = new Set(prev)
+            next.delete(studentId)
+            return next
+          })
+        },
+      }
+    )
+  }
+
+  const handleMarkAllPresent = () => {
+    if (!students || students.length === 0) return
+    const studentIds = new Set(students.map((s) => s.id))
+    setPendingStudents((prev) => new Set([...prev, ...studentIds]))
+    markBulkAttendance.mutate(
+      {
+        divisionId,
+        date: attendanceDate,
+        records: students.map((s) => ({
+          student_id: s.id,
+          status: "present" as AttendanceStatus,
+        })),
+      },
+      {
+        onSettled: () => setPendingStudents(new Set()),
+      }
+    )
+  }
+
+  const toggleObservation = (studentId: string) => {
+    setExpandedObs((prev) => {
+      const next = new Set(prev)
+      if (next.has(studentId)) next.delete(studentId)
+      else next.add(studentId)
+      return next
+    })
+  }
+
+  const handleObservationChange = (studentId: string, observation: string) => {
+    const record = attendanceMap.get(studentId)
+    if (!record) return
+    setPendingStudents((prev) => new Set(prev).add(studentId))
+    markAttendance.mutate(
+      {
+        student_id: studentId,
+        division_id: divisionId,
+        date: attendanceDate,
+        status: record.status,
+        observation,
+      },
+      {
+        onSettled: () => {
+          setPendingStudents((prev) => {
+            const next = new Set(prev)
+            next.delete(studentId)
+            return next
+          })
+        },
+      }
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Asignar Alumno</DialogTitle>
+          <DialogTitle>
+            {courseName} - {divisionName}
+          </DialogTitle>
           <DialogDescription>
-            Busque un alumno para asignarlo a esta división
+            Tomar asistencia
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+
+        <div className="flex flex-wrap items-center gap-2 pb-2">
+          <Input
+            type="date"
+            value={attendanceDate}
+            onChange={(e) => setAttendanceDate(e.target.value)}
+            className="h-8 w-[150px] text-xs"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleMarkAllPresent}
+            disabled={!students || students.length === 0 || isSaving}
+          >
+            <Check className="size-3.5" />
+            Marcar todos Presente
+          </Button>
+          <div className="relative flex-1 min-w-[150px]">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="Buscar por nombre o DNI..."
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-8"
-              autoFocus
+              placeholder="Buscar alumno..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 pl-7 text-xs"
             />
           </div>
+          {students && students.length > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {markedCount}/{studentsWithAttendance.length}
+            </Badge>
+          )}
+        </div>
 
-          <div className="max-h-64 space-y-1 overflow-y-auto">
-            {searchLoading ? (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="size-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : !search.trim() ? (
-              <p className="py-4 text-center text-xs text-muted-foreground">
-                Escriba para buscar alumnos
+        <div className="max-h-[60vh] overflow-y-auto space-y-2">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !students || students.length === 0 ? (
+            <div className="py-8 text-center">
+              <Users className="mx-auto size-8 text-muted-foreground/50" />
+              <p className="mt-2 text-sm text-muted-foreground">
+                Sin alumnos asignados a esta división
               </p>
-            ) : !availableStudents || availableStudents.length === 0 ? (
-              <p className="py-4 text-center text-xs text-muted-foreground">
-                No se encontraron alumnos
-              </p>
-            ) : (
-              availableStudents.map((student) => (
+            </div>
+          ) : (
+            filteredStudents.map((student) => {
+              const isPending = pendingStudents.has(student.studentId)
+              const showObs = expandedObs.has(student.studentId)
+              return (
                 <div
-                  key={student.id}
-                  className="flex items-center justify-between rounded-md border px-3 py-2"
+                  key={student.studentId}
+                  className={cn(
+                    "rounded-lg border p-3 transition-opacity",
+                    isPending && "opacity-60 pointer-events-none"
+                  )}
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm truncate">
-                      {student.last_name}, {student.first_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      DNI: {student.dni}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="size-8">
+                      <AvatarFallback className="text-xs">
+                        {getInitials(student.firstName, student.lastName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {student.lastName}, {student.firstName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        DNI: {student.dni}
+                      </p>
+                    </div>
+                    {isPending && (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                    )}
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      onAssign(student.id)
-                      onOpenChange(false)
-                    }}
-                  >
-                    Asignar
-                  </Button>
+
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG['present']][]).map(
+                      ([status, config]) => {
+                        const isSelected = student.status === status
+                        const Icon = config.icon
+                        return (
+                          <button
+                            key={status}
+                            type="button"
+                            data-selected={isSelected}
+                            onClick={() => handleMarkStatus(student.studentId, status)}
+                            disabled={isPending}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all",
+                              "sm:px-3 sm:py-2 sm:text-sm",
+                              config.color,
+                              isSelected && "ring-2 ring-offset-1"
+                            )}
+                          >
+                            <Icon className="size-3.5 sm:size-4" />
+                            <span className="hidden sm:inline">{config.label}</span>
+                          </button>
+                        )
+                      }
+                    )}
+
+                    {student.status && (
+                      <button
+                        type="button"
+                        onClick={() => toggleObservation(student.studentId)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors sm:px-3 sm:py-2 sm:text-sm"
+                      >
+                        {student.observation ? "Editar Obs." : "Obs."}
+                      </button>
+                    )}
+                  </div>
+
+                  {showObs && student.status && (
+                    <div className="pt-2">
+                      <textarea
+                        className="w-full rounded-lg border border-input bg-transparent p-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:text-sm"
+                        rows={2}
+                        placeholder="Agregar observación..."
+                        defaultValue={student.observation ?? ""}
+                        onBlur={(e) => {
+                          const val = e.target.value.trim()
+                          if (val !== (student.observation ?? "")) {
+                            handleObservationChange(student.studentId, val || "")
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
-              ))
-            )}
-          </div>
+              )
+            })
+          )}
         </div>
       </DialogContent>
     </Dialog>
