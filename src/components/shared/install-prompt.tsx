@@ -3,23 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
-}
-
-let deferredInstallPrompt: BeforeInstallPromptEvent | null = null
-
-if (typeof window !== "undefined") {
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault()
-    deferredInstallPrompt = e as BeforeInstallPromptEvent
-  })
-  window.addEventListener("appinstalled", () => {
-    deferredInstallPrompt = null
-  })
-}
+import { getDeferredInstallPrompt, clearDeferredInstallPrompt } from "@/lib/pwa"
 
 function isMobile(): boolean {
   if (typeof window === "undefined") return false
@@ -45,31 +29,28 @@ function isStandalone(): boolean {
 
 export function InstallPrompt() {
   const [visible, setVisible] = useState(false)
+  const [installable, setInstallable] = useState(false)
   const dismissed = useRef(false)
-
-  useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
-        updateViaCache: "none",
-      })
-    }
-  }, [])
 
   useEffect(() => {
     if (isStandalone()) return
     if (dismissed.current) return
-
     if (!isMobile()) return
 
-    if (deferredInstallPrompt || isiOS()) {
+    const prompt = getDeferredInstallPrompt()
+    if (prompt) {
+      setInstallable(true)
+      setVisible(true)
+      return
+    }
+
+    if (isiOS()) {
       setVisible(true)
       return
     }
 
     function onBeforeInstall(e: Event) {
-      e.preventDefault()
-      deferredInstallPrompt = e as BeforeInstallPromptEvent
+      setInstallable(true)
       setVisible(true)
     }
 
@@ -86,10 +67,12 @@ export function InstallPrompt() {
   }, [])
 
   function handleInstall() {
-    if (!deferredInstallPrompt) return
-    deferredInstallPrompt.prompt()
-    deferredInstallPrompt.userChoice.finally(() => {
-      deferredInstallPrompt = null
+    const prompt = getDeferredInstallPrompt()
+    if (!prompt) return
+    prompt.prompt()
+    prompt.userChoice.finally(() => {
+      clearDeferredInstallPrompt()
+      setInstallable(false)
       setVisible(false)
     })
   }
@@ -117,7 +100,7 @@ export function InstallPrompt() {
                 Agregar a pantalla de inicio
               </span>
             </p>
-          ) : deferredInstallPrompt ? (
+          ) : installable ? (
             <p className="text-muted-foreground">
               Instalá la app para acceder más rápido
             </p>
@@ -129,7 +112,7 @@ export function InstallPrompt() {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {deferredInstallPrompt && (
+          {installable && (
             <Button size="sm" onClick={handleInstall}>
               Instalar
             </Button>
