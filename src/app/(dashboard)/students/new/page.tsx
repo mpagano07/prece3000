@@ -188,16 +188,68 @@ export default function NewStudentPage() {
         </Button>
       </PageHeader>
 
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Curso</Label>
+          <Select value={courseId} onValueChange={handleCourseChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccionar curso..." />
+            </SelectTrigger>
+            <SelectContent>
+              {(courses ?? []).length === 0 && (
+                <div className="px-2 py-4 text-center text-xs text-muted-foreground">
+                  No hay cursos disponibles
+                </div>
+              )}
+              {(courses ?? []).map((course) => (
+                <SelectItem key={course.id} value={course.id}>
+                  {course.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>División</Label>
+          <Controller
+            name="division_id"
+            control={control}
+            render={({ field }) => (
+              <Select
+                value={field.value ?? ""}
+                onValueChange={field.onChange}
+                disabled={!courseId || loadingDivisions}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !courseId
+                        ? "Primero seleccione un curso"
+                        : loadingDivisions
+                          ? "Cargando..."
+                          : "Seleccionar división..."
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {divisions.map((div) => (
+                    <SelectItem key={div.id} value={div.id}>
+                      {div.name} {div.shift ? `- ${div.shift}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit(onSubmit)}>
         <Tabs defaultValue="personal" className="w-full">
           <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="personal">
               <User className="size-4" />
               Datos Personales
-            </TabsTrigger>
-            <TabsTrigger value="school">
-              <BookOpen className="size-4" />
-              Escolar
             </TabsTrigger>
             <TabsTrigger value="contact">
               <MapPin className="size-4" />
@@ -281,59 +333,6 @@ export default function NewStudentPage() {
                 <div className="space-y-2">
                   <Label htmlFor="nationality">Nacionalidad</Label>
                   <Input id="nationality" {...register("nationality")} />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="school" className="mt-4 space-y-4">
-            <Card>
-              <CardContent className="grid gap-4 pt-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="course">Curso</Label>
-                  <Select value={courseId} onValueChange={handleCourseChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar curso..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(courses ?? []).map((course) => (
-                        <SelectItem key={course.id} value={course.id}>
-                          {course.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="division_id">División</Label>
-                  <Controller
-                    name="division_id"
-                    control={control}
-                    render={({ field }) => (
-                      <Select
-                        value={field.value ?? ""}
-                        onValueChange={field.onChange}
-                        disabled={!courseId || loadingDivisions}
-                      >
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              loadingDivisions
-                                ? "Cargando..."
-                                : "Seleccionar división..."
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {divisions.map((div) => (
-                            <SelectItem key={div.id} value={div.id}>
-                              {div.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
                 </div>
               </CardContent>
             </Card>

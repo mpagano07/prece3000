@@ -79,7 +79,11 @@ export class StudentService {
       authorized_persons?: Omit<AuthorizedPerson, "id" | "student_id">[]
     }
   ): Promise<Student> {
-    const { guardians, authorized_persons, ...studentData } = data
+    const { guardians, authorized_persons, ...raw } = data
+
+    const studentData = Object.fromEntries(
+      Object.entries(raw).map(([key, val]) => [key, val === "" ? null : val])
+    )
 
     const { data: student, error } = await supabase
       .from("students")
