@@ -80,7 +80,7 @@ function AlertIcon({ type }: { type: Alert["type"] }) {
 }
 
 export default function DashboardPage() {
-  const { data: stats, isLoading: statsLoading } = useDashboardStats()
+  const { data: stats, isLoading: statsLoading, error: statsError } = useDashboardStats()
   const { data: birthdays, isLoading: birthdaysLoading } = useDashboardBirthdays()
   const { data: alerts, isLoading: alertsLoading } = useDashboardAlerts()
   const { data: events, isLoading: eventsLoading } = useUpcomingEvents()
@@ -88,6 +88,10 @@ export default function DashboardPage() {
 
   if (statsLoading || birthdaysLoading || alertsLoading || eventsLoading || nearFailingLoading) {
     return <LoadingScreen />
+  }
+
+  if (statsError) {
+    console.error("Dashboard stats error:", statsError)
   }
 
   const statCards = [
@@ -102,6 +106,9 @@ export default function DashboardPage() {
       <div>
         <h1 className="font-heading text-xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">Resumen de asistencia del día</p>
+        {statsError && (
+          <p className="mt-1 text-xs text-red-500">Error: {(statsError as Error).message}</p>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

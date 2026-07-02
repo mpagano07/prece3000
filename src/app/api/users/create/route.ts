@@ -4,10 +4,10 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function POST(request: Request) {
   try {
-    const { email, password, first_name, last_name, role, school_id } =
+    const { email, password, first_name, last_name, role, school_ids } =
       await request.json()
 
-    if (!email || !password || !first_name || !last_name || !role || !school_id) {
+    if (!email || !password || !first_name || !last_name || !role || !school_ids?.length) {
       return NextResponse.json(
         { error: "Todos los campos son requeridos" },
         { status: 400 }
@@ -48,13 +48,15 @@ export async function POST(request: Request) {
       )
     }
 
+    const primarySchoolId = school_ids[0]
+
     const { error: profileError } = await adminClient
       .from("profiles")
       .update({
         first_name,
         last_name,
         role,
-        school_id,
+        school_id: primarySchoolId,
       })
       .eq("id", authUser.user.id)
 
@@ -63,6 +65,24 @@ export async function POST(request: Request) {
         { error: `Error al actualizar perfil: ${profileError.message}` },
         { status: 500 }
       )
+    }
+
+    if (role === "preceptor") {
+      const { error: psError } = await adminClient
+        .from("preceptor_schools")
+        .insert(
+          school_ids.map((sid: string) => ({
+            preceptor_id: authUser.user.id,
+            school_id: sid,
+          }))
+        )
+
+      if (psError) {
+        return NextResponse.json(
+          { error: `Error al asignar escuelas: ${psError.message}` },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json({ success: true, user: authUser.user })

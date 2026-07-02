@@ -70,7 +70,7 @@ export default function CoursesPage() {
   const { school, profile, isLoading: authLoading } = useAuth()
   const queryClient = useQueryClient()
 
-  const { data: courses, isLoading: coursesLoading } = useCourses()
+  const { data: courses, isLoading: coursesLoading, error: coursesError } = useCourses()
   const { data: activeAcademicYear, isLoading: academicYearLoading } =
     useActiveAcademicYear()
   const { data: preceptors } = usePreceptors()
@@ -104,9 +104,7 @@ export default function CoursesPage() {
   const canManage =
     profile?.role === "super_admin" ||
     profile?.role === "school_admin" ||
-    profile?.role === "director" ||
-    profile?.role === "preceptor" ||
-    profile?.role === "secretary"
+    profile?.role === "director"
 
   const deleteCourseMutation = useMutation({
     mutationFn: (id: string) => courseService.delete(id),
@@ -249,6 +247,11 @@ export default function CoursesPage() {
       {coursesLoading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : coursesError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
+          <p className="font-medium">Error al cargar cursos</p>
+          <p className="mt-1">{(coursesError as Error).message}</p>
         </div>
       ) : !courses || courses.length === 0 ? (
         <EmptyState

@@ -248,3 +248,10 @@ export interface Appointment {
 export interface DivisionWithCourse extends Division {
   course: Course
 }
+
+export interface PreceptorSchool {
+  id: string
+  preceptor_id: string
+  school_id: string
+  created_at: string
+}

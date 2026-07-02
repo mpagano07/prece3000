@@ -48,14 +48,26 @@ export class TeacherService {
     supabase: SupabaseClient,
     schoolId: string
   ): Promise<Profile[]> {
-    const { data, error } = await supabase
+    const { data: psData } = await supabase
+      .from("preceptor_schools")
+      .select("preceptor_id")
+      .eq("school_id", schoolId)
+    const preceptorIds = psData?.map((p) => p.preceptor_id) ?? []
+
+    let query = supabase
       .from("profiles")
       .select("*")
-      .eq("school_id", schoolId)
       .eq("role", "preceptor")
       .order("last_name", { ascending: true })
       .order("first_name", { ascending: true })
 
+    if (preceptorIds.length > 0) {
+      query = query.or(`school_id.eq.${schoolId},id.in.(${preceptorIds.join(",")})`)
+    } else {
+      query = query.eq("school_id", schoolId)
+    }
+
+    const { data, error } = await query
     if (error) throw new Error(`Error fetching preceptors: ${error.message}`)
     return data ?? []
   }

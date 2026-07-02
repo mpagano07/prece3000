@@ -62,6 +62,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : schools[0]
         setSchool(target ?? null)
         setActiveSchoolId(target?.id ?? null)
+      } else if (profileData.role === "preceptor") {
+        const schoolIds: string[] = []
+        if (profileData.school_id) schoolIds.push(profileData.school_id)
+
+        const { data: extraSchools } = await supabase
+          .from("preceptor_schools")
+          .select("school_id")
+          .eq("preceptor_id", userId)
+
+        if (extraSchools) {
+          for (const es of extraSchools) {
+            if (!schoolIds.includes(es.school_id)) {
+              schoolIds.push(es.school_id)
+            }
+          }
+        }
+
+        if (schoolIds.length > 0) {
+          const { data: schoolsData } = await supabase
+            .from("schools")
+            .select("*")
+            .in("id", schoolIds)
+
+          const schools = schoolsData ?? []
+          setAvailableSchools(schools)
+
+          const storedId = localStorage.getItem("activeSchoolId")
+          const target = storedId
+            ? schools.find((s) => s.id === storedId)
+            : schools[0]
+          setSchool(target ?? null)
+          setActiveSchoolId(target?.id ?? null)
+        } else {
+          setSchool(null)
+          setActiveSchoolId(null)
+        }
       } else if (profileData.school_id) {
         const { data: schoolData } = await supabase
           .from("schools")
