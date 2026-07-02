@@ -94,6 +94,7 @@ export default function CoursesPage() {
   const canManage =
     profile?.role === "super_admin" ||
     profile?.role === "school_admin" ||
+    profile?.role === "director" ||
     profile?.role === "preceptor" ||
     profile?.role === "secretary"
 

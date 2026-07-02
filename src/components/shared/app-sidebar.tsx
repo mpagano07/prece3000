@@ -34,18 +34,18 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ["super_admin", "school_admin", "preceptor", "secretary"] },
-  { href: "/students", label: "Alumnos", icon: Users, roles: ["super_admin", "school_admin", "preceptor", "secretary"] },
-  { href: "/attendance", label: "Asistencia", icon: ClipboardCheck, roles: ["super_admin", "school_admin", "preceptor", "secretary"] },
+  { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
+  { href: "/students", label: "Alumnos", icon: Users, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
+  { href: "/attendance", label: "Asistencia", icon: ClipboardCheck, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
   { href: "/book", label: "Libro de Preceptor", icon: BookOpen, roles: ["super_admin", "preceptor"] },
-  { href: "/calendar", label: "Calendario", icon: Calendar, roles: ["super_admin", "school_admin", "preceptor", "secretary"] },
+  { href: "/calendar", label: "Calendario", icon: Calendar, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
   { href: "/agenda", label: "Agenda", icon: Notebook, roles: ["super_admin", "preceptor"] },
-  { href: "/courses", label: "Cursos", icon: GraduationCap, roles: ["super_admin", "school_admin"] },
-  { href: "/teachers", label: "Docentes", icon: Presentation, roles: ["super_admin", "school_admin"] },
-  { href: "/communications", label: "Comunicaciones", icon: MessageSquare, roles: ["super_admin", "school_admin", "preceptor", "secretary"] },
-  { href: "/documents", label: "Documentos", icon: FileText, roles: ["super_admin", "school_admin", "preceptor", "secretary"] },
-  { href: "/reports", label: "Reportes", icon: BarChart3, roles: ["super_admin", "school_admin", "secretary"] },
-  { href: "/settings", label: "Configuración", icon: Settings, roles: ["super_admin", "school_admin"] },
+  { href: "/courses", label: "Cursos", icon: GraduationCap, roles: ["super_admin", "school_admin", "director"] },
+  { href: "/teachers", label: "Docentes", icon: Presentation, roles: ["super_admin", "school_admin", "director"] },
+  { href: "/communications", label: "Comunicaciones", icon: MessageSquare, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
+  { href: "/documents", label: "Documentos", icon: FileText, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
+  { href: "/reports", label: "Reportes", icon: BarChart3, roles: ["super_admin", "school_admin", "director", "secretary"] },
+  { href: "/settings", label: "Configuración", icon: Settings, roles: ["super_admin", "school_admin", "director"] },
   { href: "/admin/users", label: "Usuarios", icon: UserCog, roles: ["super_admin"] },
   { href: "/admin/schools", label: "Escuelas", icon: Shield, roles: ["super_admin"] },
 ]

@@ -9,6 +9,7 @@ import type {
 export const ROLES: { value: Role; label: string }[] = [
   { value: "super_admin", label: "Super Administrador" },
   { value: "school_admin", label: "Administrador Escolar" },
+  { value: "director", label: "Director" },
   { value: "preceptor", label: "Preceptor" },
   { value: "secretary", label: "Secretario" },
   { value: "teacher", label: "Docente" },

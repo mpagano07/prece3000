@@ -77,7 +77,6 @@ export class DocumentService {
   }
 }
 
-let cachedSchoolId: string | null = null
 let cachedUserId: string | null = null
 
 async function ensureContext(client = createClient()) {
@@ -86,16 +85,18 @@ async function ensureContext(client = createClient()) {
     if (!user) throw new Error("Not authenticated")
     cachedUserId = user.id
   }
-  if (!cachedSchoolId) {
-    const { data: profile } = await client
-      .from("profiles")
-      .select("school_id")
-      .eq("id", cachedUserId)
-      .maybeSingle()
-    if (!profile?.school_id) throw new Error("Profile has no associated school")
-    cachedSchoolId = profile.school_id
+  const { getActiveSchoolId } = await import("@/lib/active-school")
+  const activeSchoolId = getActiveSchoolId()
+  if (activeSchoolId) {
+    return { supabase: client, userId: cachedUserId, schoolId: activeSchoolId }
   }
-  return { supabase: client, userId: cachedUserId, schoolId: cachedSchoolId! }
+  const { data: profile } = await client
+    .from("profiles")
+    .select("school_id")
+    .eq("id", cachedUserId)
+    .maybeSingle()
+  if (!profile?.school_id) throw new Error("No active school selected")
+  return { supabase: client, userId: cachedUserId, schoolId: profile.school_id }
 }
 
 export const documentService = {

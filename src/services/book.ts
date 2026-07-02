@@ -101,7 +101,6 @@ export class PreceptorBookService {
   }
 }
 
-let cachedSchoolId: string | null = null
 let cachedUserId: string | null = null
 
 async function ensureContext(client = createClient()) {
@@ -110,15 +109,17 @@ async function ensureContext(client = createClient()) {
     if (!user) throw new Error("Not authenticated")
     cachedUserId = user.id
   }
-  if (!cachedSchoolId) {
-    const { data: profile } = await client
-      .from("profiles")
-      .select("school_id")
-      .eq("id", cachedUserId)
-      .maybeSingle()
-    cachedSchoolId = profile?.school_id ?? ""
+  const { getActiveSchoolId } = await import("@/lib/active-school")
+  const activeSchoolId = getActiveSchoolId()
+  if (activeSchoolId) {
+    return { supabase: client, userId: cachedUserId, schoolId: activeSchoolId }
   }
-  return { supabase: client, userId: cachedUserId, schoolId: cachedSchoolId }
+  const { data: profile } = await client
+    .from("profiles")
+    .select("school_id")
+    .eq("id", cachedUserId)
+    .maybeSingle()
+  return { supabase: client, userId: cachedUserId, schoolId: profile?.school_id ?? "" }
 }
 
 export const preceptorBookService = {

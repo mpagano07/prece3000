@@ -12,11 +12,14 @@ import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 import type { Profile, School } from "@/types/database"
 import { useRouter } from "next/navigation"
+import { setActiveSchoolId } from "@/lib/active-school"
 
 interface AuthContextValue {
   user: User | null
   profile: Profile | null
   school: School | null
+  availableSchools: School[]
+  setActiveSchool: (school: School | null) => void
   isLoading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -28,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [school, setSchool] = useState<School | null>(null)
+  const [availableSchools, setAvailableSchools] = useState<School[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const [supabase] = useState(() => createClient())
@@ -41,20 +45,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!error && profileData) {
       setProfile(profileData)
+      setAvailableSchools([])
 
-      if (profileData.school_id) {
+      if (profileData.role === "super_admin") {
+        const { data: schoolsData } = await supabase
+          .from("schools")
+          .select("*")
+          .eq("active", true)
+          .order("name")
+        const schools = schoolsData ?? []
+        setAvailableSchools(schools)
+
+        const storedId = localStorage.getItem("activeSchoolId")
+        const target = storedId
+          ? schools.find((s) => s.id === storedId)
+          : schools[0]
+        setSchool(target ?? null)
+        setActiveSchoolId(target?.id ?? null)
+      } else if (profileData.school_id) {
         const { data: schoolData } = await supabase
           .from("schools")
           .select("*")
           .eq("id", profileData.school_id)
           .maybeSingle()
-        setSchool(schoolData ?? null)
+        const s = schoolData ?? null
+        setSchool(s)
+        setActiveSchoolId(s?.id ?? null)
       } else {
         setSchool(null)
+        setActiveSchoolId(null)
       }
     } else {
       setProfile(null)
       setSchool(null)
+      setAvailableSchools([])
+      setActiveSchoolId(null)
     }
   }, [supabase])
 
@@ -125,13 +150,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error
   }
 
+  const setActiveSchool = useCallback((s: School | null) => {
+    setSchool(s)
+    setActiveSchoolId(s?.id ?? null)
+    if (s) {
+      localStorage.setItem("activeSchoolId", s.id)
+    } else {
+      localStorage.removeItem("activeSchoolId")
+    }
+  }, [])
+
   const signOut = async () => {
+    setActiveSchoolId(null)
+    localStorage.removeItem("activeSchoolId")
     await supabase.auth.signOut()
   }
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, school, isLoading, signIn, signOut }}
+      value={{ user, profile, school, availableSchools, setActiveSchool, isLoading, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>

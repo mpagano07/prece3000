@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Users,
   Plus,
@@ -49,15 +49,16 @@ import { toast } from "sonner"
 const ROLE_COLORS: Record<string, string> = {
   super_admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   school_admin: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  director: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
   preceptor: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
   secretary: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
   teacher: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
 }
 
-const CREATABLE_ROLES = ["school_admin", "preceptor", "secretary", "teacher"] as const
+const CREATABLE_ROLES = ["school_admin", "director", "preceptor", "secretary", "teacher"] as const
 
 export default function AdminUsersPage() {
-  const { profile } = useAuth()
+  const { profile, school } = useAuth()
   const queryClient = useQueryClient()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newUser, setNewUser] = useState<{
@@ -95,7 +96,13 @@ export default function AdminUsersPage() {
     return acc
   }, {} as Record<string, string>) ?? {}
 
-  const [selectedSchool, setSelectedSchool] = useState<string>("")
+  const [selectedSchool, setSelectedSchool] = useState<string>(school?.id ?? "")
+
+  useEffect(() => {
+    if (school?.id) {
+      setSelectedSchool(school.id)
+    }
+  }, [school?.id])
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["users", selectedSchool],

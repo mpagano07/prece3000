@@ -80,7 +80,7 @@ export default function TeachersPage() {
     },
   })
 
-  if (profile?.role !== "school_admin" && profile?.role !== "super_admin") {
+  if (profile?.role !== "school_admin" && profile?.role !== "director" && profile?.role !== "super_admin") {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <ShieldAlert className="mb-4 size-12 text-muted-foreground" />

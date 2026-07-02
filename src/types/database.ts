@@ -1,4 +1,4 @@
-export type Role = "super_admin" | "school_admin" | "preceptor" | "secretary" | "teacher"
+export type Role = "super_admin" | "school_admin" | "director" | "preceptor" | "secretary" | "teacher"
 
 export type AttendanceStatus = "present" | "absent" | "absent_justified" | "late" | "early_withdrawal"
 

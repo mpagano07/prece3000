@@ -186,7 +186,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {profile?.role === "school_admin" && school && (
+      {(profile?.role === "school_admin" || profile?.role === "director") && school && (
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -338,7 +338,9 @@ export default function SettingsPage() {
                   ? "Super Administrador"
                   : profile?.role === "school_admin"
                     ? "Administrador Escolar"
-                    : profile?.role === "preceptor"
+                    : profile?.role === "director"
+                      ? "Director"
+                      : profile?.role === "preceptor"
                       ? "Preceptor"
                       : profile?.role === "secretary"
                         ? "Secretario"

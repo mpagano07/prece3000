@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { SchoolSwitcher } from "@/components/shared/school-switcher"
 
 interface AppHeaderProps {
   onMenuClick: () => void
@@ -33,9 +34,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
         <span className="sr-only">Menú</span>
       </Button>
 
-      <div className="hidden sm:block text-sm font-medium text-muted-foreground">
-        {school?.name ?? "Preceptor"}
-      </div>
+      <SchoolSwitcher />
 
       <div className="flex-1" />
 

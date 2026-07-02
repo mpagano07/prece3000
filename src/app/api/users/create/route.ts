@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const validRoles = ["school_admin", "preceptor", "secretary", "teacher"]
+    const validRoles = ["school_admin", "director", "preceptor", "secretary", "teacher"]
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: "Rol inválido" },
