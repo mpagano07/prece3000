@@ -31,6 +31,9 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs"
+import { createClient } from "@/lib/supabase/client"
+import { StudentService } from "@/services/students"
+import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft,
   Plus,
@@ -138,6 +141,20 @@ export default function EditStudentPage({ params }: PageProps) {
     },
   })
 
+  const supabase = createClient()
+
+  const { data: existingGuardians } = useQuery({
+    queryKey: ["student-guardians", id],
+    queryFn: () => StudentService.getGuardians(supabase, id),
+    enabled: !!id,
+  })
+
+  const { data: existingAuthorized } = useQuery({
+    queryKey: ["student-authorized", id],
+    queryFn: () => StudentService.getAuthorizedPersons(supabase, id),
+    enabled: !!id,
+  })
+
   const {
     fields: guardianFields,
     append: appendGuardian,
@@ -151,7 +168,7 @@ export default function EditStudentPage({ params }: PageProps) {
   } = useFieldArray({ control, name: "authorized_persons" })
 
   useEffect(() => {
-    if (student) {
+    if (student && existingGuardians && existingAuthorized) {
       reset({
         first_name: student.first_name ?? "",
         last_name: student.last_name ?? "",
@@ -172,11 +189,20 @@ export default function EditStudentPage({ params }: PageProps) {
         restrictions: student.restrictions ?? "",
         division_id: student.division_id ?? "",
         academic_year_id: student.academic_year_id ?? "",
-        guardians: [],
-        authorized_persons: [],
+        guardians: existingGuardians.map((g) => ({
+          name: g.name,
+          phone: g.phone ?? "",
+          email: g.email ?? "",
+          relationship: g.relationship,
+        })),
+        authorized_persons: existingAuthorized.map((p) => ({
+          name: p.name,
+          phone: p.phone ?? "",
+          document: p.document ?? "",
+        })),
       })
     }
-  }, [student, reset])
+  }, [student, existingGuardians, existingAuthorized, reset])
 
   const handleCourseChange = async (value: string | null) => {
     const v = value ?? ""
@@ -224,10 +250,12 @@ export default function EditStudentPage({ params }: PageProps) {
       restrictions: formData.restrictions || null,
       division_id: formData.division_id || null,
       academic_year_id: formData.academic_year_id || null,
+      guardians: formData.guardians.filter((g) => g.name),
+      authorized_persons: formData.authorized_persons.filter((p) => p.name),
     }
 
     updateStudent.mutate(
-      { id, data: payload as Partial<Student> },
+      { id, data: payload },
       { onSuccess: () => router.push(`/students/${id}`) }
     )
   }

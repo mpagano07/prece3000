@@ -122,16 +122,48 @@ export class StudentService {
   static async update(
     supabase: SupabaseClient,
     id: string,
-    data: Partial<Omit<Student, "id" | "created_at" | "updated_at">>
+    data: Partial<Omit<Student, "id" | "created_at" | "updated_at">> & {
+      guardians?: Omit<StudentGuardian, "id" | "student_id">[]
+      authorized_persons?: Omit<AuthorizedPerson, "id" | "student_id">[]
+    }
   ): Promise<Student> {
+    const { guardians, authorized_persons, ...studentData } = data
+
+    const cleaned = Object.fromEntries(
+      Object.entries(studentData).map(([key, val]) => [key, val === "" ? null : val])
+    )
+
     const { data: student, error } = await supabase
       .from("students")
-      .update(data)
+      .update(cleaned)
       .eq("id", id)
       .select()
       .single()
 
     if (error) throw new Error(`Error updating student: ${error.message}`)
+
+    if (guardians !== undefined) {
+      await supabase.from("student_guardians").delete().eq("student_id", id)
+
+      if (guardians.length > 0) {
+        const { error: gErr } = await supabase
+          .from("student_guardians")
+          .insert(guardians.map((g) => ({ ...g, student_id: id })))
+        if (gErr) throw new Error(`Error updating guardians: ${gErr.message}`)
+      }
+    }
+
+    if (authorized_persons !== undefined) {
+      await supabase.from("authorized_persons").delete().eq("student_id", id)
+
+      if (authorized_persons.length > 0) {
+        const { error: aErr } = await supabase
+          .from("authorized_persons")
+          .insert(authorized_persons.map((p) => ({ ...p, student_id: id })))
+        if (aErr) throw new Error(`Error updating authorized persons: ${aErr.message}`)
+      }
+    }
+
     return student
   }
 
