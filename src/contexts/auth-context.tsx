@@ -91,13 +91,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        if (event === "SIGNED_IN") {
           const { data: { user } } = await supabase.auth.getUser()
           if (user) {
             setUser(user)
             await fetchProfile(user.id)
           }
-          setIsLoading(false)
+          return
+        }
+
+        if (event === "TOKEN_REFRESHED") {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            setUser(user)
+            await fetchProfile(user.id)
+          }
           router.refresh()
         }
       }
