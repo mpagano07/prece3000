@@ -58,7 +58,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { school_id, schedules } = await request.json()
+    const { school_id, schedules, employee_id } = await request.json()
 
     if (!school_id || !schedules) {
       return NextResponse.json(
@@ -75,10 +75,16 @@ export async function POST(request: Request) {
 
     const adminClient = createAdminClient()
 
-    const { error: deleteError } = await adminClient
+    let deleteQuery = adminClient
       .from("employee_schedules")
       .delete()
       .eq("school_id", school_id)
+
+    if (employee_id) {
+      deleteQuery = deleteQuery.eq("employee_id", employee_id)
+    }
+
+    const { error: deleteError } = await deleteQuery
 
     if (deleteError) {
       return NextResponse.json(
@@ -88,12 +94,13 @@ export async function POST(request: Request) {
     }
 
     const rows: ScheduleRow[] = []
-    for (const [employee_id, days] of Object.entries(schedules) as [string, Record<string, { time_start: string; time_end: string }[]>][]) {
+    for (const [empId, days] of Object.entries(schedules) as [string, Record<string, { time_start: string; time_end: string }[]>][]) {
+      if (employee_id && empId !== employee_id) continue
       for (const [dayStr, slots] of Object.entries(days)) {
         const day = Number(dayStr)
         for (const slot of slots) {
           rows.push({
-            employee_id,
+            employee_id: empId,
             school_id,
             day_of_week: day,
             time_start: slot.time_start,

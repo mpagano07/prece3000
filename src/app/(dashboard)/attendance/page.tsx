@@ -107,6 +107,24 @@ export default function EmployeeAttendancePage() {
     enabled: !!school?.id && canAccess,
   })
 
+  const { data: hasSchedules } = useQuery({
+    queryKey: ["has-schedules", school?.id],
+    queryFn: async () => {
+      const supabase = (await import("@/lib/supabase/client")).createClient()
+      const { count: empCount } = await supabase
+        .from("employee_schedules")
+        .select("*", { count: "exact", head: true })
+        .eq("school_id", school!.id)
+      if ((empCount ?? 0) > 0) return true
+      const { count: divCount } = await supabase
+        .from("division_schedules")
+        .select("*", { count: "exact", head: true })
+        .eq("school_id", school!.id)
+      return (divCount ?? 0) > 0
+    },
+    enabled: !!school?.id && canAccess,
+  })
+
   const { data: schedulesSet } = useQuery({
     queryKey: ["employee-schedules", school?.id, date],
     queryFn: async () => {
@@ -138,9 +156,10 @@ export default function EmployeeAttendancePage() {
 
   const scheduledEmployees = useMemo(() => {
     if (!employees) return []
-    if (!schedulesSet || schedulesSet.size === 0) return employees
+    if (hasSchedules === false) return employees
+    if (!schedulesSet) return employees
     return employees.filter((e) => schedulesSet.has(e.id))
-  }, [employees, schedulesSet])
+  }, [employees, hasSchedules, schedulesSet])
 
   useEffect(() => {
     if (existingRecords && employees) {
