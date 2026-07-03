@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo, useEffect } from "react"
 import {
   Users,
   Plus,
@@ -9,6 +9,7 @@ import {
   Mail,
   Phone,
   ShieldAlert,
+  Calendar,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,7 +41,10 @@ import { TeacherService } from "@/services/teachers"
 import { createClient } from "@/lib/supabase/client"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { getInitials } from "@/lib/utils"
+import { getInitials, cn } from "@/lib/utils"
+import { ScheduleConfigDialog } from "@/components/employee/schedule-config-dialog"
+import { ScheduleEditor, type ScheduleSlot } from "@/components/employee/schedule-editor"
+import { DAY_LABELS } from "@/lib/constants"
 import type { Profile } from "@/types/database"
 
 function useTeachers() {
@@ -64,6 +68,31 @@ export default function TeachersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editTeacher, setEditTeacher] = useState<Profile | null>(null)
   const [deleteTeacherId, setDeleteTeacherId] = useState<string | null>(null)
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+
+  const { data: scheduleData } = useQuery({
+    queryKey: ["teacher-schedules", profile?.school_id],
+    queryFn: async () => {
+      const res = await fetch(`/api/employee-schedules?school_id=${profile?.school_id}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      return data.schedules as Record<string, Record<string, { time_start: string; time_end: string }[]>> ?? {}
+    },
+    enabled: !!profile?.school_id,
+  })
+
+  const teacherSchedules = useMemo(() => {
+    if (!scheduleData) return new Map<string, Record<number, { time_start: string; time_end: string }[]>>()
+    const map = new Map<string, Record<number, { time_start: string; time_end: string }[]>>()
+    for (const [empId, days] of Object.entries(scheduleData)) {
+      const dayMap: Record<number, { time_start: string; time_end: string }[]> = {}
+      for (const [dayStr, slots] of Object.entries(days)) {
+        dayMap[Number(dayStr)] = slots
+      }
+      map.set(empId, dayMap)
+    }
+    return map
+  }, [scheduleData])
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -105,14 +134,20 @@ export default function TeachersPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Docentes" description="Gestión de docentes de la institución">
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger render={<Button><Plus className="size-4" /> Nuevo Docente</Button>} />
-          <DialogContent className="sm:max-w-md">
-            <TeacherForm
-              onSuccess={() => setIsCreateOpen(false)}
-            />
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setScheduleDialogOpen(true)}>
+            <Calendar className="size-4" />
+            Horarios
+          </Button>
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger render={<Button><Plus className="size-4" /> Nuevo Docente</Button>} />
+            <DialogContent className="sm:max-w-md">
+              <TeacherForm
+                onSuccess={() => setIsCreateOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </PageHeader>
 
       {teachers && teachers.length === 0 ? (
@@ -158,7 +193,30 @@ export default function TeachersPage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-4 flex items-center gap-2">
+                {teacherSchedules.has(teacher.id) && (
+                  <div className="mt-3">
+                    <p className="mb-1.5 text-[10px] font-medium text-muted-foreground">Horario semanal</p>
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from({ length: 7 }).map((_, day) => {
+                        const slots = teacherSchedules.get(teacher.id)?.[day]
+                        if (!slots || slots.length === 0) return null
+                        return (
+                          <div key={day} className="rounded-md bg-muted/50 px-1.5 py-0.5">
+                            <span className="text-[10px] font-medium text-muted-foreground">{DAY_LABELS[day]}</span>
+                            <div className="mt-0.5 space-y-0.5">
+                              {slots.map((slot, i) => (
+                                <p key={i} className="text-[9px] text-muted-foreground whitespace-nowrap">
+                                  {slot.time_start}–{slot.time_end}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div className="mt-3 flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -203,6 +261,11 @@ export default function TeachersPage() {
           if (deleteTeacherId) deleteMutation.mutate(deleteTeacherId)
         }}
       />
+
+      <ScheduleConfigDialog
+        open={scheduleDialogOpen}
+        onOpenChange={setScheduleDialogOpen}
+      />
     </div>
   )
 }
@@ -222,6 +285,53 @@ function TeacherForm({
   const [phone, setPhone] = useState(teacher?.phone || "")
   const [password, setPassword] = useState("")
   const [saving, setSaving] = useState(false)
+  const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([])
+
+  const { data: existingSchedule } = useQuery({
+    queryKey: ["teacher-edit-schedule", teacher?.id],
+    queryFn: async () => {
+      if (!teacher || !school?.id) return []
+      const res = await fetch(`/api/employee-schedules?school_id=${school.id}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      const empDays = (data.schedules ?? {})[teacher.id] as Record<string, { time_start: string; time_end: string }[]> | undefined
+      if (!empDays) return []
+      const slots: ScheduleSlot[] = []
+      for (const [dayStr, timeSlots] of Object.entries(empDays)) {
+        for (const ts of timeSlots) {
+          slots.push({ day_of_week: Number(dayStr), time_start: ts.time_start, time_end: ts.time_end })
+        }
+      }
+      slots.sort((a, b) => a.day_of_week - b.day_of_week || a.time_start.localeCompare(b.time_start))
+      return slots
+    },
+    enabled: !!teacher && !!school?.id,
+  })
+
+  useEffect(() => {
+    if (existingSchedule) {
+      setScheduleSlots(existingSchedule)
+    }
+  }, [existingSchedule])
+
+  const saveSchedule = async (employeeId: string) => {
+    const days: Record<string, { time_start: string; time_end: string }[]> = {}
+    for (const slot of scheduleSlots) {
+      const key = String(slot.day_of_week)
+      if (!days[key]) days[key] = []
+      days[key].push({ time_start: slot.time_start, time_end: slot.time_end })
+    }
+    const payload: Record<string, Record<string, { time_start: string; time_end: string }[]>> = {
+      [employeeId]: days,
+    }
+    const res = await fetch("/api/employee-schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ school_id: school!.id, schedules: payload }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -230,8 +340,10 @@ function TeacherForm({
       const supabase = createClient()
       if (teacher) {
         await TeacherService.update(supabase, teacher.id, { first_name: firstName, last_name: lastName, email, phone })
+        await saveSchedule(teacher.id)
         toast.success("Docente actualizado correctamente")
         queryClient.invalidateQueries({ queryKey: ["teachers"] })
+        queryClient.invalidateQueries({ queryKey: ["teacher-schedules"] })
         onSuccess()
       } else {
         if (!school?.id) throw new Error("No se encontró la institución asociada")
@@ -250,8 +362,13 @@ function TeacherForm({
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error)
+        const newTeacherId = data.user?.id
+        if (newTeacherId && scheduleSlots.length > 0) {
+          await saveSchedule(newTeacherId)
+        }
         toast.success("Docente creado correctamente")
         queryClient.invalidateQueries({ queryKey: ["teachers"] })
+        queryClient.invalidateQueries({ queryKey: ["teacher-schedules"] })
         onSuccess()
       }
     } catch (err) {
@@ -267,8 +384,8 @@ function TeacherForm({
         <DialogTitle>{teacher ? "Editar Docente" : "Nuevo Docente"}</DialogTitle>
         <DialogDescription>
           {teacher
-            ? "Modificá los datos del docente."
-            : "Completá los datos para registrar un nuevo docente."}
+            ? "Modificá los datos y horarios del docente."
+            : "Completá los datos y horarios para registrar un nuevo docente."}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4 pt-2">
@@ -322,6 +439,13 @@ function TeacherForm({
             />
           </div>
         )}
+        <div className="space-y-2">
+          <Label className="text-xs font-medium">Horario semanal</Label>
+          <ScheduleEditor
+            slots={scheduleSlots}
+            onChange={setScheduleSlots}
+          />
+        </div>
       </div>
       <DialogFooter>
         <Button type="submit" disabled={saving}>

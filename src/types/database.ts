@@ -2,6 +2,8 @@ export type Role = "super_admin" | "school_admin" | "director" | "preceptor" | "
 
 export type AttendanceStatus = "present" | "absent" | "absent_justified" | "late" | "early_withdrawal"
 
+export type EmployeeAttendanceStatus = "present" | "absent" | "late" | "justified_absence"
+
 export type BookEntryType =
   | "incident"
   | "sanction"
@@ -254,4 +256,25 @@ export interface PreceptorSchool {
   preceptor_id: string
   school_id: string
   created_at: string
+}
+
+export interface EmployeeAttendance {
+  id: string
+  school_id: string
+  employee_id: string
+  date: string
+  status: EmployeeAttendanceStatus
+  observation: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface EmployeeSchedule {
+  id: string
+  employee_id: string
+  school_id: string
+  day_of_week: number
+  time_start: string
+  time_end: string
 }

@@ -80,6 +80,8 @@ export const RELATIONSHIP_OPTIONS = [
   { value: "other", label: "Otro" },
 ]
 
+export const DAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
+
 export const BLOOD_TYPE_OPTIONS = [
   { value: "A+", label: "A+" },
   { value: "A-", label: "A-" },
