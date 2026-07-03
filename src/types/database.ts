@@ -278,3 +278,20 @@ export interface EmployeeSchedule {
   time_start: string
   time_end: string
 }
+
+export interface DivisionSchedule {
+  id: string
+  division_id: string
+  subject_id: string
+  teacher_id: string
+  school_id: string
+  day_of_week: number
+  time_start: string
+  time_end: string
+}
+
+export interface DivisionScheduleWithNames extends DivisionSchedule {
+  subject: { name: string }
+  teacher: { first_name: string; last_name: string } | Profile
+  division: { name: string } | Division
+}

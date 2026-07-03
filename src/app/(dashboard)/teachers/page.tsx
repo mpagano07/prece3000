@@ -70,7 +70,7 @@ export default function TeachersPage() {
   const [deleteTeacherId, setDeleteTeacherId] = useState<string | null>(null)
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
 
-  const { data: scheduleData } = useQuery({
+  const { data: empScheduleData } = useQuery({
     queryKey: ["teacher-schedules", profile?.school_id],
     queryFn: async () => {
       const res = await fetch(`/api/employee-schedules?school_id=${profile?.school_id}`)
@@ -81,18 +81,45 @@ export default function TeachersPage() {
     enabled: !!profile?.school_id,
   })
 
+  const { data: divScheduleData } = useQuery({
+    queryKey: ["teacher-division-schedules", profile?.school_id],
+    queryFn: async () => {
+      const res = await fetch(`/api/division-schedules?school_id=${profile?.school_id}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      type Row = { teacher_id: string; day_of_week: number; time_start: string; time_end: string; subject?: { name: string } }
+      return (data.schedules ?? []) as Row[]
+    },
+    enabled: !!profile?.school_id,
+  })
+
   const teacherSchedules = useMemo(() => {
-    if (!scheduleData) return new Map<string, Record<number, { time_start: string; time_end: string }[]>>()
-    const map = new Map<string, Record<number, { time_start: string; time_end: string }[]>>()
-    for (const [empId, days] of Object.entries(scheduleData)) {
-      const dayMap: Record<number, { time_start: string; time_end: string }[]> = {}
+    const map = new Map<string, Record<number, { time_start: string; time_end: string; subject?: string }[]>>()
+
+    for (const [empId, days] of Object.entries(empScheduleData ?? {})) {
       for (const [dayStr, slots] of Object.entries(days)) {
-        dayMap[Number(dayStr)] = slots
+        const day = Number(dayStr)
+        if (!map.has(empId)) map.set(empId, {})
+        if (!map.get(empId)![day]) map.get(empId)![day] = []
+        for (const slot of slots) {
+          map.get(empId)![day].push({ time_start: slot.time_start, time_end: slot.time_end })
+        }
       }
-      map.set(empId, dayMap)
     }
+
+    for (const row of divScheduleData ?? []) {
+      const day = row.day_of_week
+      if (!map.has(row.teacher_id)) map.set(row.teacher_id, {})
+      if (!map.get(row.teacher_id)![day]) map.get(row.teacher_id)![day] = []
+      map.get(row.teacher_id)![day].push({
+        time_start: row.time_start.slice(0, 5),
+        time_end: row.time_end.slice(0, 5),
+        subject: row.subject?.name,
+      })
+    }
+
     return map
-  }, [scheduleData])
+  }, [empScheduleData, divScheduleData])
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -206,6 +233,7 @@ export default function TeachersPage() {
                             <div className="mt-0.5 space-y-0.5">
                               {slots.map((slot, i) => (
                                 <p key={i} className="text-[9px] text-muted-foreground whitespace-nowrap">
+                                  {slot.subject ? <span className="font-medium">{slot.subject} </span> : null}
                                   {slot.time_start}–{slot.time_end}
                                 </p>
                               ))}

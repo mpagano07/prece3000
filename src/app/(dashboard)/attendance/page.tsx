@@ -113,13 +113,25 @@ export default function EmployeeAttendancePage() {
       const [y, m, d] = date.split("-").map(Number)
       const dayOfWeek = new Date(y, m - 1, d).getDay()
       const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
+
+      const { data: employeeSched, error: esError } = await supabase
         .from("employee_schedules")
         .select("employee_id")
         .eq("school_id", school!.id)
         .eq("day_of_week", dayOfWeek)
-      if (error) throw error
-      return new Set(data?.map((s) => s.employee_id) ?? [])
+      if (esError) throw esError
+
+      const { data: divisionSched, error: dsError } = await supabase
+        .from("division_schedules")
+        .select("teacher_id")
+        .eq("school_id", school!.id)
+        .eq("day_of_week", dayOfWeek)
+      if (dsError) throw dsError
+
+      const ids = new Set<string>()
+      for (const s of employeeSched ?? []) ids.add(s.employee_id)
+      for (const s of divisionSched ?? []) ids.add(s.teacher_id)
+      return ids
     },
     enabled: !!school?.id && canAccess,
   })

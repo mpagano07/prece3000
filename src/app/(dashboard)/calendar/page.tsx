@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Users,
 } from "lucide-react"
 import {
   startOfMonth,
@@ -54,12 +53,10 @@ import { useAuth } from "@/contexts/auth-context"
 import { PageHeader } from "@/components/shared/page-header"
 import { EmptyState } from "@/components/shared/empty-state"
 import { LoadingScreen } from "@/components/shared/loading-screen"
-import { useQuery } from "@tanstack/react-query"
 import { useCalendarEvents, useCreateEvent } from "@/hooks/use-calendar"
 import { EVENT_TYPES } from "@/lib/constants"
 import { formatDateTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
-import { DAY_LABELS } from "@/lib/constants"
 import type { EventType } from "@/types/database"
 
 const EVENT_COLORS: Record<EventType, string> = {
@@ -88,76 +85,6 @@ export default function CalendarPage() {
     calStart.toISOString(),
     calEnd.toISOString()
   )
-
-  const { data: scheduleData } = useQuery({
-    queryKey: ["calendar-schedules", school?.id],
-    queryFn: async () => {
-      if (!school?.id) return {}
-      const res = await fetch(`/api/employee-schedules?school_id=${school.id}`)
-      const resp = await res.json()
-      if (!res.ok) throw new Error(resp.error)
-      return (resp.schedules ?? {}) as Record<string, Record<string, { time_start: string; time_end: string }[]>>
-    },
-    enabled: !!school?.id,
-    staleTime: 60000,
-  })
-
-  const employeeSchedules = useMemo(() => {
-    if (!scheduleData) return new Map<string, Record<number, { time_start: string; time_end: string }[]>>()
-    const map = new Map<string, Record<number, { time_start: string; time_end: string }[]>>()
-    for (const [empId, days] of Object.entries(scheduleData)) {
-      const dayMap: Record<number, { time_start: string; time_end: string }[]> = {}
-      for (const [dayStr, slots] of Object.entries(days)) {
-        dayMap[Number(dayStr)] = slots
-      }
-      map.set(empId, dayMap)
-    }
-    return map
-  }, [scheduleData])
-
-  const { data: employeeProfiles } = useQuery({
-    queryKey: ["calendar-employees"],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, first_name, last_name, role")
-        .in("role", ["teacher", "preceptor", "secretary"])
-      if (error) throw error
-      return data ?? []
-    },
-    staleTime: 300000,
-  })
-
-  const profileMap = useMemo(() => {
-    const map = new Map<string, { first_name: string; last_name: string; role: string }>()
-    for (const p of employeeProfiles ?? []) {
-      map.set(p.id, p)
-    }
-    return map
-  }, [employeeProfiles])
-
-  const schedulesByDay = useMemo(() => {
-    const byDay = new Map<string, { name: string; time_start: string; time_end: string }[]>()
-    for (const day of days) {
-      const dayOfWeek = day.getDay()
-      const key = format(day, "yyyy-MM-dd")
-      const entries: { name: string; time_start: string; time_end: string }[] = []
-      for (const [empId, dayMap] of employeeSchedules.entries()) {
-        const slots = dayMap[dayOfWeek]
-        if (slots && slots.length > 0) {
-          const profile = profileMap.get(empId)
-          const name = profile ? `${profile.last_name}, ${profile.first_name}` : empId.slice(0, 8)
-          for (const slot of slots) {
-            entries.push({ name, time_start: slot.time_start, time_end: slot.time_end })
-          }
-        }
-      }
-      entries.sort((a, b) => a.time_start.localeCompare(b.time_start))
-      byDay.set(key, entries)
-    }
-    return byDay
-  }, [days, employeeSchedules, profileMap])
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, typeof events>()
@@ -308,63 +235,7 @@ export default function CalendarPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base font-medium">
-            <Users className="size-4" />
-            Horarios del Personal
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="grid grid-cols-7 border-b">
-            {DAY_LABELS.map((d) => (
-              <div key={d} className="py-2 text-center text-xs font-medium text-muted-foreground">
-                {d}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {days.map((day) => {
-              const key = format(day, "yyyy-MM-dd")
-              const dayOfWeek = day.getDay()
-              const shiftGroups = schedulesByDay.get(key)
-              const isCurrentMonth = isSameMonth(day, currentMonth)
-              return (
-                <div
-                  key={key}
-                  className={cn(
-                    "min-h-28 border-b border-r p-1",
-                    !isCurrentMonth && "bg-muted/30"
-                  )}
-                >
-                  <span className="inline-flex size-5 items-center justify-center rounded-full text-[10px] text-muted-foreground">
-                    {format(day, "d")}
-                  </span>
-                  {isCurrentMonth && shiftGroups && shiftGroups.length > 0 && (
-                    <div className="mt-0.5 space-y-0.5">
-                      {shiftGroups.slice(0, 4).map((entry, i) => (
-                        <div key={i} className="truncate rounded-[3px] px-1 py-[1px] text-[8px] leading-tight text-muted-foreground">
-                          <span className="font-medium">{entry.time_start}</span>
-                          {" "}
-                          {entry.name.split(", ")[0]}
-                        </div>
-                      ))}
-                      {shiftGroups.length > 4 && (
-                        <span className="px-1 text-[8px] text-muted-foreground/60">
-                          +{shiftGroups.length - 4} más
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {isCurrentMonth && (!shiftGroups || shiftGroups.length === 0) && (
-                    <p className="px-1 text-[9px] text-muted-foreground/40">—</p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
+
     </div>
   )
 }

@@ -24,6 +24,8 @@ import { format } from "date-fns"
 import { cn, getInitials } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { useCourses, useDivisions, useCreateCourse, useCreateDivision, useUpdateDivision } from "@/hooks/use-courses"
+import { useQuery } from "@tanstack/react-query"
+import { DivisionScheduleEditor } from "@/components/division/division-schedule-editor"
 import {
   useAttendance,
   useMarkAttendance,
@@ -93,6 +95,45 @@ export default function CoursesPage() {
     divisionName: string
     courseName: string
   } | null>(null)
+
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+  const [scheduleDialogDivision, setScheduleDialogDivision] = useState<{
+    divisionId: string
+    divisionName: string
+    courseName: string
+  } | null>(null)
+
+  const { data: allSubjects } = useQuery({
+    queryKey: ["subjects", school?.id, activeAcademicYear?.id],
+    queryFn: async () => {
+      const supabase = (await import("@/lib/supabase/client")).createClient()
+      const { data, error } = await supabase
+        .from("subjects")
+        .select("*")
+        .eq("school_id", school!.id)
+        .eq("academic_year_id", activeAcademicYear!.id)
+        .order("name")
+      if (error) throw error
+      return (data ?? []) as import("@/types/database").Subject[]
+    },
+    enabled: !!school?.id && !!activeAcademicYear?.id,
+  })
+
+  const { data: allTeachers, isLoading: teachersLoading } = useQuery({
+    queryKey: ["school-teachers", school?.id],
+    queryFn: async () => {
+      const supabase = (await import("@/lib/supabase/client")).createClient()
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("school_id", school!.id)
+        .eq("role", "teacher")
+        .order("last_name")
+      if (error) throw error
+      return (data ?? []) as import("@/types/database").Profile[]
+    },
+    enabled: !!school?.id,
+  })
 
   const [newCourseName, setNewCourseName] = useState("")
   const [newCourseDivisionName, setNewCourseDivisionName] = useState("")
@@ -228,6 +269,11 @@ export default function CoursesPage() {
     setDivisionDialogOpen(true)
   }
 
+  const openScheduleDialog = (divisionId: string, divisionName: string, courseName: string) => {
+    setScheduleDialogDivision({ divisionId, divisionName, courseName })
+    setScheduleDialogOpen(true)
+  }
+
   if (authLoading) return <LoadingScreen />
 
   return (
@@ -293,6 +339,7 @@ export default function CoursesPage() {
               }}
               onPreceptorChange={handlePreceptorChange}
               onAttendance={openAttendanceDialog}
+              onSchedule={openScheduleDialog}
               canManage={canManage}
             />
           ))}
@@ -452,6 +499,26 @@ export default function CoursesPage() {
         courseName={attendanceDialogDivision?.courseName ?? ""}
       />
 
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm">
+              Horario — {scheduleDialogDivision?.courseName} {scheduleDialogDivision?.divisionName}
+            </DialogTitle>
+          </DialogHeader>
+          {scheduleDialogDivision && allSubjects && activeAcademicYear && (
+            <DivisionScheduleEditor
+              divisionId={scheduleDialogDivision.divisionId}
+              schoolId={school?.id ?? ""}
+              academicYearId={activeAcademicYear.id}
+              subjects={allSubjects}
+              teachers={allTeachers ?? []}
+              onSubjectsChange={() => queryClient.invalidateQueries({ queryKey: ["subjects", school?.id, activeAcademicYear?.id] })}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
@@ -475,6 +542,7 @@ function CourseCard({
   onDeleteDivision,
   onPreceptorChange,
   onAttendance,
+  onSchedule,
   canManage,
 }: {
   course: { id: string; name: string }
@@ -484,6 +552,7 @@ function CourseCard({
   onDeleteDivision: (id: string, name: string) => void
   onPreceptorChange: (divisionId: string, preceptorId: string) => void
   onAttendance: (divisionId: string, divisionName: string, courseName: string) => void
+  onSchedule: (divisionId: string, divisionName: string, courseName: string) => void
   canManage: boolean
 }) {
   const { data: divisions, isLoading: divisionsLoading } = useDivisions(course.id)
@@ -579,6 +648,14 @@ function CourseCard({
                       title="Tomar asistencia"
                     >
                       <ClipboardCheck className="size-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => onSchedule(div.id, div.name, course.name)}
+                      title="Horario"
+                    >
+                      <Clock className="size-3" />
                     </Button>
                     {canManage && (
                       <Button
