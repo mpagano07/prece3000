@@ -34,15 +34,16 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
-  { href: "/students", label: "Alumnos", icon: Users, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
+  { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary", "teacher"] },
+  { href: "/students", label: "Alumnos", icon: Users, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary", "teacher"] },
   { href: "/book", label: "Libro de Preceptor", icon: BookOpen, roles: ["super_admin", "preceptor"] },
-  { href: "/calendar", label: "Calendario", icon: Calendar, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
+  { href: "/calendar", label: "Calendario", icon: Calendar, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary", "teacher"] },
   { href: "/agenda", label: "Agenda", icon: Notebook, roles: ["super_admin", "preceptor"] },
   { href: "/attendance", label: "Asistencia Personal", icon: ClipboardCheck, roles: ["super_admin", "school_admin", "director", "secretary"] },
-  { href: "/courses", label: "Cursos", icon: GraduationCap, roles: ["super_admin", "school_admin", "director", "preceptor"] },
+  { href: "/courses", label: "Cursos", icon: GraduationCap, roles: ["super_admin", "school_admin", "director", "preceptor", "teacher"] },
   { href: "/teachers", label: "Docentes", icon: Presentation, roles: ["super_admin", "school_admin", "director"] },
-  { href: "/communications", label: "Comunicaciones", icon: MessageSquare, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
+  { href: "/grades", label: "Calificaciones", icon: ClipboardCheck, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary", "teacher"] },
+  { href: "/communications", label: "Comunicaciones", icon: MessageSquare, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary", "teacher"] },
   { href: "/documents", label: "Documentos", icon: FileText, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
   { href: "/reports", label: "Reportes", icon: BarChart3, roles: ["super_admin", "school_admin", "director", "secretary"] },
   { href: "/settings", label: "Configuración", icon: Settings, roles: ["super_admin", "school_admin", "director"] },

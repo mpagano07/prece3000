@@ -7,20 +7,21 @@ const routePermissions: Record<string, Role[]> = {
   "/admin": ["super_admin"],
   "/admin/users": ["super_admin"],
   "/admin/schools": ["super_admin"],
-  "/students": ["super_admin", "preceptor", "school_admin", "director", "secretary"],
+  "/students": ["super_admin", "preceptor", "school_admin", "director", "secretary", "teacher"],
   "/attendance": ["super_admin", "school_admin", "director", "secretary"],
-  "/courses": ["super_admin", "school_admin", "director", "preceptor"],
+  "/courses": ["super_admin", "school_admin", "director", "preceptor", "teacher"],
   "/teachers": ["super_admin", "school_admin", "director"],
   "/reports": ["super_admin", "school_admin", "director", "preceptor"],
   "/settings": ["super_admin", "school_admin", "director", "preceptor"],
   "/book": ["super_admin", "preceptor"],
-  "/communications": ["super_admin", "preceptor"],
+  "/communications": ["super_admin", "preceptor", "teacher"],
+  "/documents": ["super_admin", "school_admin", "director", "preceptor", "secretary"],
 }
 
 const authenticatedRoutes = [
   "/dashboard",
   "/calendar",
-  "/documents",
+  "/grades",
   "/agenda",
   "/search",
 ]

@@ -304,3 +304,22 @@ export interface DivisionScheduleWithNames extends DivisionSchedule {
   teacher: { first_name: string; last_name: string } | Profile
   division: { name: string } | Division
 }
+
+export interface Grade {
+  id: string
+  school_id: string
+  student_id: string
+  subject_id: string
+  division_id: string
+  academic_year_id: string
+  partial_1: string | null
+  final_1: number | null
+  partial_2: string | null
+  final_2: number | null
+  updated_by: string | null
+  updated_at: string
+  created_at: string
+}
+
+export type PartialGradeValue = "TEA" | "TEP" | "TED"
+export type GradePeriod = "partial_1" | "final_1" | "partial_2" | "final_2"
