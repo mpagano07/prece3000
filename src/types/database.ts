@@ -291,6 +291,14 @@ export interface DivisionSchedule {
   time_end: string
 }
 
+export interface TeacherSchool {
+  id: string
+  teacher_id: string
+  school_id: string
+  deactivated_at: string | null
+  created_at: string
+}
+
 export interface DivisionScheduleWithNames extends DivisionSchedule {
   subject: { name: string }
   teacher: { first_name: string; last_name: string } | Profile

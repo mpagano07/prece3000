@@ -115,6 +115,7 @@ export default function AdminUsersPage() {
     queryFn: async () => {
       const supabase = createClient()
       let preceptorIds: string[] = []
+      let teacherIds: string[] = []
 
       if (selectedSchool) {
         const { data: psData } = await supabase
@@ -122,6 +123,12 @@ export default function AdminUsersPage() {
           .select("preceptor_id")
           .eq("school_id", selectedSchool)
         preceptorIds = psData?.map((p) => p.preceptor_id) ?? []
+
+        const { data: tsData } = await supabase
+          .from("teacher_schools")
+          .select("teacher_id")
+          .eq("school_id", selectedSchool)
+        teacherIds = tsData?.map((t) => t.teacher_id) ?? []
       }
 
       let query = supabase
@@ -131,9 +138,10 @@ export default function AdminUsersPage() {
         .order("last_name")
 
       if (selectedSchool) {
-        if (preceptorIds.length > 0) {
+        const extraIds = [...preceptorIds, ...teacherIds]
+        if (extraIds.length > 0) {
           query = query.is("deactivated_at", null).or(
-            `school_id.eq.${selectedSchool},id.in.(${preceptorIds.join(",")})`
+            `school_id.eq.${selectedSchool},id.in.(${extraIds.join(",")})`
           )
         } else {
           query = query.eq("school_id", selectedSchool).is("deactivated_at", null)
@@ -350,8 +358,8 @@ export default function AdminUsersPage() {
             onValueChange={(v) => setSelectedSchool(v ?? "")}
             getLabel={(v) => (v ? schoolName[v] ?? v : "Todas las escuelas")}
           >
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder="Todas las escuelas" />
+            <SelectTrigger className="w-56 overflow-hidden">
+              <SelectValue placeholder="Todas las escuelas" className="truncate min-w-0" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="">Todas las escuelas</SelectItem>

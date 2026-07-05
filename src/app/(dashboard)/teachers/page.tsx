@@ -7,10 +7,12 @@ import {
   Pencil,
   Trash2,
   UserCheck,
+  UserPlus,
   Mail,
   Phone,
   ShieldAlert,
   Calendar,
+  Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,7 +40,7 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { LoadingScreen } from "@/components/shared/loading-screen"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { useAuth } from "@/contexts/auth-context"
-import { TeacherService } from "@/services/teachers"
+import { TeacherService, type TeacherWithSchoolStatus } from "@/services/teachers"
 import { createClient } from "@/lib/supabase/client"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -63,7 +65,7 @@ function useTeachers() {
 }
 
 export default function TeachersPage() {
-  const { profile } = useAuth()
+  const { profile, school } = useAuth()
   const queryClient = useQueryClient()
   const { data: teachers, isLoading, error } = useTeachers()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -71,6 +73,7 @@ export default function TeachersPage() {
   const [deleteTeacherId, setDeleteTeacherId] = useState<string | null>(null)
   const [reactivateTeacherId, setReactivateTeacherId] = useState<string | null>(null)
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+  const [addExistingOpen, setAddExistingOpen] = useState(false)
 
   const { data: empScheduleData } = useQuery({
     queryKey: ["teacher-schedules", profile?.school_id],
@@ -126,7 +129,7 @@ export default function TeachersPage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const supabase = createClient()
-      return TeacherService.delete(supabase, id)
+      return TeacherService.delete(supabase, id, school?.id)
     },
     onSuccess: () => {
       toast.success("Docente desactivado correctamente")
@@ -141,7 +144,7 @@ export default function TeachersPage() {
   const reactivateMutation = useMutation({
     mutationFn: async (id: string) => {
       const supabase = createClient()
-      return TeacherService.reactivate(supabase, id)
+      return TeacherService.reactivate(supabase, id, school?.id)
     },
     onSuccess: () => {
       toast.success("Docente reactivado correctamente")
@@ -183,6 +186,19 @@ export default function TeachersPage() {
             <Calendar className="size-4" />
             Horarios
           </Button>
+          <Dialog open={addExistingOpen} onOpenChange={setAddExistingOpen}>
+            <DialogTrigger render={<Button variant="outline"><UserPlus className="size-4" /> Agregar existente</Button>} />
+            <DialogContent className="sm:max-w-md">
+              <AddExistingTeacherDialog
+                schoolId={school?.id ?? ""}
+                onClose={() => setAddExistingOpen(false)}
+                onSuccess={() => {
+                  setAddExistingOpen(false)
+                  queryClient.invalidateQueries({ queryKey: ["teachers"] })
+                }}
+              />
+            </DialogContent>
+          </Dialog>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger render={<Button><Plus className="size-4" /> Nuevo Docente</Button>} />
             <DialogContent className="sm:max-w-md">
@@ -204,7 +220,7 @@ export default function TeachersPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {teachers?.map((teacher) => {
-            const isDeactivated = !!teacher.deactivated_at
+            const isDeactivated = !!(teacher as TeacherWithSchoolStatus).school_deactivated_at
             return (
             <Card key={teacher.id} className={cn(isDeactivated && "opacity-60")}>
               <CardHeader>
@@ -342,6 +358,152 @@ export default function TeachersPage() {
         open={scheduleDialogOpen}
         onOpenChange={setScheduleDialogOpen}
       />
+    </div>
+  )
+}
+
+function AddExistingTeacherDialog({
+  schoolId,
+  onClose,
+  onSuccess,
+}: {
+  schoolId: string
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [email, setEmail] = useState("")
+  const [searching, setSearching] = useState(false)
+  const [foundTeacher, setFoundTeacher] = useState<{
+    id: string
+    first_name: string
+    last_name: string
+    email: string
+  } | null>(null)
+  const [error, setError] = useState("")
+  const [adding, setAdding] = useState(false)
+  const [alreadyAssigned, setAlreadyAssigned] = useState(false)
+
+  const handleSearch = async () => {
+    if (!email) return
+    setSearching(true)
+    setError("")
+    setFoundTeacher(null)
+    setAlreadyAssigned(false)
+    try {
+      const res = await fetch("/api/teachers/add-existing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, school_id: schoolId, mode: "search" }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (res.status === 404) {
+          setError("No se encontró un usuario con ese email")
+        } else {
+          setError(data.error)
+        }
+        return
+      }
+      setFoundTeacher(data.teacher)
+      setAlreadyAssigned(!!data.already_assigned)
+      if (data.already_assigned) {
+        toast.success("El docente ya está en esta escuela")
+      } else {
+        toast.success("Docente encontrado")
+      }
+    } catch {
+      setError("Error al buscar docente")
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const handleAdd = async () => {
+    if (!foundTeacher) return
+    setAdding(true)
+    try {
+      const res = await fetch("/api/teachers/add-existing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: foundTeacher.email, school_id: schoolId, mode: "add" }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success("Docente agregado correctamente")
+      onSuccess()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al agregar docente")
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <DialogHeader>
+        <DialogTitle>Agregar docente existente</DialogTitle>
+        <DialogDescription>
+          Ingresá el email del docente que ya trabaja en otra institución para agregarlo a esta escuela.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 pt-2">
+        <div className="flex items-end gap-2">
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="ae-email">Email del docente</Label>
+            <Input
+              id="ae-email"
+              type="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                setFoundTeacher(null)
+                setError("")
+                setAlreadyAssigned(false)
+              }}
+              placeholder="docente@ejemplo.com"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSearch()
+              }}
+            />
+          </div>
+          <Button onClick={handleSearch} disabled={searching || !email}>
+            <Search className="size-4" />
+            {searching ? "Buscando..." : "Buscar"}
+          </Button>
+        </div>
+
+        {error && (
+          <p className="text-sm text-destructive">{error}</p>
+        )}
+
+        {foundTeacher && (
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex items-center gap-3">
+              <Avatar>
+                <AvatarFallback>
+                  {getInitials(foundTeacher.first_name, foundTeacher.last_name)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="text-sm font-medium">
+                  {foundTeacher.first_name} {foundTeacher.last_name}
+                </p>
+                <p className="text-xs text-muted-foreground">{foundTeacher.email}</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              {!alreadyAssigned && (
+                <Button onClick={handleAdd} disabled={adding}>
+                  {adding ? "Agregando..." : "Agregar a esta escuela"}
+                </Button>
+              )}
+            </DialogFooter>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

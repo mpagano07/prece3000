@@ -33,6 +33,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Error al reactivar usuario" }, { status: 500 })
     }
 
+    // If teacher, ensure teacher_schools entry exists
+    if (school_id) {
+      const { data: profile } = await adminClient
+        .from("profiles")
+        .select("role")
+        .eq("id", user_id)
+        .single()
+
+      if (profile?.role === "teacher") {
+        await adminClient
+          .from("teacher_schools")
+          .upsert(
+            { teacher_id: user_id, school_id, deactivated_at: null },
+            { onConflict: "teacher_id, school_id" }
+          )
+      }
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Reactivate error:", error)

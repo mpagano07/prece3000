@@ -37,19 +37,19 @@ export async function POST(request: Request) {
         )
       }
 
-      const { error: deleteError } = await adminClient
+      const { error: deletePreceptorError } = await adminClient
         .from("preceptor_schools")
         .delete()
         .eq("preceptor_id", user_id)
 
-      if (deleteError) {
+      if (deletePreceptorError) {
         return NextResponse.json(
-          { error: `Error al reasignar escuelas: ${deleteError.message}` },
+          { error: `Error al reasignar escuelas: ${deletePreceptorError.message}` },
           { status: 500 }
         )
       }
 
-      const { error: insertError } = await adminClient
+      const { error: insertPreceptorError } = await adminClient
         .from("preceptor_schools")
         .insert(
           school_ids.map((sid: string) => ({
@@ -58,9 +58,37 @@ export async function POST(request: Request) {
           }))
         )
 
-      if (insertError) {
+      if (insertPreceptorError) {
         return NextResponse.json(
-          { error: `Error al asignar escuelas: ${insertError.message}` },
+          { error: `Error al asignar escuelas: ${insertPreceptorError.message}` },
+          { status: 500 }
+        )
+      }
+
+      const { error: deleteTeacherError } = await adminClient
+        .from("teacher_schools")
+        .delete()
+        .eq("teacher_id", user_id)
+
+      if (deleteTeacherError) {
+        return NextResponse.json(
+          { error: `Error al reasignar escuelas: ${deleteTeacherError.message}` },
+          { status: 500 }
+        )
+      }
+
+      const { error: insertTeacherError } = await adminClient
+        .from("teacher_schools")
+        .insert(
+          school_ids.map((sid: string) => ({
+            teacher_id: user_id,
+            school_id: sid,
+          }))
+        )
+
+      if (insertTeacherError) {
+        return NextResponse.json(
+          { error: `Error al asignar escuelas: ${insertTeacherError.message}` },
           { status: 500 }
         )
       }

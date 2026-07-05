@@ -37,7 +37,7 @@ export async function POST(request: Request) {
 
     await adminClient
       .from("profiles")
-      .update({ school_id: null })
+      .update({ school_id: null, deactivated_at: new Date().toISOString() })
       .eq("id", user_id)
 
     return NextResponse.json({ success: true })

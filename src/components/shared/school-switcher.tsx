@@ -13,7 +13,7 @@ import {
 export function SchoolSwitcher() {
   const { school, availableSchools, setActiveSchool } = useAuth()
 
-  if (availableSchools.length <= 1) return null
+  if (availableSchools.length === 0) return null
 
   return (
     <Select
@@ -27,9 +27,9 @@ export function SchoolSwitcher() {
         return s?.name ?? "Seleccionar escuela"
       }}
     >
-      <SelectTrigger className="max-w-48 border-transparent bg-transparent hover:bg-accent/50">
+      <SelectTrigger className="min-w-0 border-transparent bg-transparent hover:bg-accent/50">
         <Building2 className="size-4 shrink-0 text-muted-foreground" />
-        <SelectValue placeholder="Escuela" />
+        <SelectValue placeholder="Escuela" className="flex-1 min-w-0" />
       </SelectTrigger>
       <SelectContent>
         {availableSchools.map((s) => (

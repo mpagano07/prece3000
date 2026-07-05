@@ -85,6 +85,24 @@ export async function POST(request: Request) {
       }
     }
 
+    if (role === "teacher") {
+      const { error: tsError } = await adminClient
+        .from("teacher_schools")
+        .insert(
+          school_ids.map((sid: string) => ({
+            teacher_id: authUser.user.id,
+            school_id: sid,
+          }))
+        )
+
+      if (tsError) {
+        return NextResponse.json(
+          { error: `Error al asignar escuelas: ${tsError.message}` },
+          { status: 500 }
+        )
+      }
+    }
+
     return NextResponse.json({ success: true, user: authUser.user })
   } catch (err) {
     return NextResponse.json(
