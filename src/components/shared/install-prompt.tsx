@@ -88,7 +88,7 @@ export function InstallPrompt() {
     <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background p-4 pb-6 shadow-lg">
       <div className="mx-auto flex max-w-lg items-start justify-between gap-3">
         <div className="min-w-0 text-sm">
-          <p className="font-semibold">Instalar Preceptor</p>
+          <p className="font-semibold">Instalar ElPrece</p>
           {isiOS() ? (
             <p className="text-muted-foreground">
               Presioná Compartir{" "}

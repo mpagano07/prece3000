@@ -49,6 +49,7 @@ export interface Profile {
   email: string
   phone: string | null
   avatar_url: string | null
+  deactivated_at: string | null
   created_at: string
   updated_at: string
 }

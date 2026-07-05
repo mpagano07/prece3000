@@ -11,14 +11,14 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "Preceptor",
+  title: "ElPrece",
   description: "Sistema de gestión escolar",
   manifest: "/manifest.json",
   icons: {
     apple: "/icon-192.png",
   },
   appleWebApp: {
-    title: "Preceptor",
+    title: "ElPrece",
     statusBarStyle: "default",
     capable: true,
   },

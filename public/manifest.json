@@ -1,6 +1,6 @@
 {
-  "name": "Preceptor",
-  "short_name": "Preceptor",
+  "name": "ElPrece",
+  "short_name": "ElPrece",
   "description": "Sistema de gestión escolar",
   "start_url": "/",
   "display": "standalone",

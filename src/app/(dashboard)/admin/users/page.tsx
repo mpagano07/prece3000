@@ -9,6 +9,7 @@ import {
   UserCog,
   UserX,
   Check,
+  UserCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,6 +43,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingScreen } from "@/components/shared/loading-screen"
 import { EmptyState } from "@/components/shared/empty-state"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { ROLES } from "@/lib/constants"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -63,6 +65,8 @@ export default function AdminUsersPage() {
   const { profile, school } = useAuth()
   const queryClient = useQueryClient()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [deactivateUserId, setDeactivateUserId] = useState<string | null>(null)
+  const [reactivateUserId, setReactivateUserId] = useState<string | null>(null)
   const [newUser, setNewUser] = useState<{
     email: string
     password: string
@@ -128,12 +132,14 @@ export default function AdminUsersPage() {
 
       if (selectedSchool) {
         if (preceptorIds.length > 0) {
-          query = query.or(
+          query = query.is("deactivated_at", null).or(
             `school_id.eq.${selectedSchool},id.in.(${preceptorIds.join(",")})`
           )
         } else {
-          query = query.eq("school_id", selectedSchool)
+          query = query.eq("school_id", selectedSchool).is("deactivated_at", null)
         }
+      } else {
+        query = query.is("deactivated_at", null)
       }
 
       const { data, error } = await query
@@ -227,6 +233,45 @@ export default function AdminUsersPage() {
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Error al desactivar usuario")
     },
+  })
+
+  const reactivateUser = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await fetch("/api/users/reactivate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, school_id: selectedSchool }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      return data
+    },
+    onSuccess: () => {
+      toast.success("Usuario reactivado")
+      queryClient.invalidateQueries({ queryKey: ["users"] })
+      queryClient.invalidateQueries({ queryKey: ["deactivated-users"] })
+      setReactivateUserId(null)
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Error al reactivar usuario")
+    },
+  })
+
+  const { data: deactivatedUsers } = useQuery({
+    queryKey: ["deactivated-users"],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .neq("role", "super_admin")
+        .order("last_name")
+      if (error) throw error
+      return (data ?? []).filter(
+        (u) => u.deactivated_at !== null || u.school_id === null
+      )
+    },
+    enabled: profile?.role === "super_admin",
   })
 
   const [editUser, setEditUser] = useState<{
@@ -504,11 +549,7 @@ export default function AdminUsersPage() {
                         variant="outline"
                         size="sm"
                         className="text-xs"
-                        onClick={() => {
-                          if (confirm("¿Estás seguro de desactivar este usuario?")) {
-                            deactivateUser.mutate(u.id)
-                          }
-                        }}
+                        onClick={() => setDeactivateUserId(u.id)}
                         disabled={deactivateUser.isPending}
                       >
                         <UserX /> Desactivar
@@ -522,6 +563,59 @@ export default function AdminUsersPage() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {deactivatedUsers && deactivatedUsers.length > 0 && (
+        <div className="pt-6">
+          <h3 className="text-sm font-medium text-muted-foreground mb-3">
+            Usuarios desactivados ({deactivatedUsers.length})
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {deactivatedUsers.map((u) => (
+              <Card key={u.id} className="opacity-60">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="size-10">
+                        <AvatarFallback className="text-xs">
+                          {u.first_name?.charAt(0) ?? "?"}
+                          {u.last_name?.charAt(0) ?? ""}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <CardTitle className="text-sm">
+                          {u.first_name} {u.last_name}
+                        </CardTitle>
+                        <CardDescription className="flex items-center gap-1 text-xs">
+                          <Mail className="size-3" />
+                          {u.email}
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Badge className={ROLE_COLORS[u.role] ?? ""}>
+                      {ROLES.find((r) => r.value === u.role)?.label ?? u.role}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {u.school_id ? "Desactivado" : "Desactivado — sin escuela asignada"}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => setReactivateUserId(u.id)}
+                    disabled={reactivateUser.isPending || !selectedSchool}
+                  >
+                    <UserCheck className="size-3.5 mr-1" />
+                    Reactivar
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 
@@ -569,6 +663,31 @@ export default function AdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deactivateUserId}
+        onOpenChange={() => setDeactivateUserId(null)}
+        title="Desactivar usuario"
+        description="¿Está seguro de desactivar este usuario? Podrá reactivarlo más adelante."
+        confirmLabel="Desactivar"
+        loading={deactivateUser.isPending}
+        onConfirm={() => {
+          if (deactivateUserId) deactivateUser.mutate(deactivateUserId)
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!reactivateUserId}
+        onOpenChange={() => setReactivateUserId(null)}
+        title="Reactivar usuario"
+        description="¿Está seguro de reactivar este usuario en la escuela seleccionada?"
+        confirmLabel="Reactivar"
+        variant="default"
+        loading={reactivateUser.isPending}
+        onConfirm={() => {
+          if (reactivateUserId) reactivateUser.mutate(reactivateUserId)
+        }}
+      />
     </div>
   )
 }

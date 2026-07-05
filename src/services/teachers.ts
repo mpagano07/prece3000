@@ -111,10 +111,20 @@ export class TeacherService {
   static async delete(supabase: SupabaseClient, id: string): Promise<void> {
     const { error } = await supabase
       .from("profiles")
-      .update({ school_id: null })
+      .update({ deactivated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("role", "teacher")
 
     if (error) throw new Error(`Error deactivating teacher: ${error.message}`)
+  }
+
+  static async reactivate(supabase: SupabaseClient, id: string): Promise<void> {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ deactivated_at: null })
+      .eq("id", id)
+      .eq("role", "teacher")
+
+    if (error) throw new Error(`Error reactivating teacher: ${error.message}`)
   }
 }

@@ -6,6 +6,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  UserCheck,
   Mail,
   Phone,
   ShieldAlert,
@@ -68,6 +69,7 @@ export default function TeachersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editTeacher, setEditTeacher] = useState<Profile | null>(null)
   const [deleteTeacherId, setDeleteTeacherId] = useState<string | null>(null)
+  const [reactivateTeacherId, setReactivateTeacherId] = useState<string | null>(null)
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
 
   const { data: empScheduleData } = useQuery({
@@ -136,6 +138,21 @@ export default function TeachersPage() {
     },
   })
 
+  const reactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const supabase = createClient()
+      return TeacherService.reactivate(supabase, id)
+    },
+    onSuccess: () => {
+      toast.success("Docente reactivado correctamente")
+      queryClient.invalidateQueries({ queryKey: ["teachers"] })
+      setReactivateTeacherId(null)
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Error al reactivar docente")
+    },
+  })
+
   if (profile?.role !== "school_admin" && profile?.role !== "director" && profile?.role !== "super_admin") {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -186,8 +203,10 @@ export default function TeachersPage() {
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {teachers?.map((teacher) => (
-            <Card key={teacher.id}>
+          {teachers?.map((teacher) => {
+            const isDeactivated = !!teacher.deactivated_at
+            return (
+            <Card key={teacher.id} className={cn(isDeactivated && "opacity-60")}>
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3">
@@ -205,6 +224,9 @@ export default function TeachersPage() {
                       </CardDescription>
                     </div>
                   </div>
+                  {isDeactivated && (
+                    <Badge variant="secondary" className="text-[10px] shrink-0">Desactivado</Badge>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -245,27 +267,40 @@ export default function TeachersPage() {
                   </div>
                 )}
                 <div className="mt-3 flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEditTeacher(teacher)}
-                  >
-                    <Pencil className="size-3.5" />
-                    Editar
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTeacherId(teacher.id)}
-                  >
-                    <Trash2 className="size-3.5" />
-                    Desactivar
-                  </Button>
+                  {!isDeactivated ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditTeacher(teacher)}
+                      >
+                        <Pencil className="size-3.5" />
+                        Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTeacherId(teacher.id)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Desactivar
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setReactivateTeacherId(teacher.id)}
+                    >
+                      <UserCheck className="size-3.5" />
+                      Reactivar
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
-          ))}
+          )})}
         </div>
       )}
 
@@ -287,6 +322,19 @@ export default function TeachersPage() {
         loading={deleteMutation.isPending}
         onConfirm={() => {
           if (deleteTeacherId) deleteMutation.mutate(deleteTeacherId)
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!reactivateTeacherId}
+        onOpenChange={() => setReactivateTeacherId(null)}
+        title="Reactivar docente"
+        description="¿Está seguro de reactivar este docente?"
+        confirmLabel="Reactivar"
+        variant="default"
+        loading={reactivateMutation.isPending}
+        onConfirm={() => {
+          if (reactivateTeacherId) reactivateMutation.mutate(reactivateTeacherId)
         }}
       />
 
@@ -319,17 +367,40 @@ function TeacherForm({
     queryKey: ["teacher-edit-schedule", teacher?.id],
     queryFn: async () => {
       if (!teacher || !school?.id) return []
-      const res = await fetch(`/api/employee-schedules?school_id=${school.id}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      const empDays = (data.schedules ?? {})[teacher.id] as Record<string, { time_start: string; time_end: string }[]> | undefined
-      if (!empDays) return []
+
+      // 1. Load employee_schedules
+      const empRes = await fetch(`/api/employee-schedules?school_id=${school.id}`)
+      const empData = await empRes.json()
+      if (!empRes.ok) throw new Error(empData.error)
+      const empDays = (empData.schedules ?? {})[teacher.id] as Record<string, { time_start: string; time_end: string }[]> | undefined
+
+      const seenDays = new Set<number>()
       const slots: ScheduleSlot[] = []
-      for (const [dayStr, timeSlots] of Object.entries(empDays)) {
+
+      for (const [dayStr, timeSlots] of Object.entries(empDays ?? {})) {
         for (const ts of timeSlots) {
           slots.push({ day_of_week: Number(dayStr), time_start: ts.time_start, time_end: ts.time_end })
+          seenDays.add(Number(dayStr))
         }
       }
+
+      // 2. Also load division_schedules and merge days not already present
+      const divRes = await fetch(`/api/division-schedules?school_id=${school.id}`)
+      if (divRes.ok) {
+        const divData = await divRes.json()
+        for (const s of divData.schedules ?? []) {
+          if (s.teacher_id !== teacher.id) continue
+          if (!seenDays.has(s.day_of_week)) {
+            slots.push({
+              day_of_week: s.day_of_week,
+              time_start: s.time_start.slice(0, 5),
+              time_end: s.time_end.slice(0, 5),
+            })
+            seenDays.add(s.day_of_week)
+          }
+        }
+      }
+
       slots.sort((a, b) => a.day_of_week - b.day_of_week || a.time_start.localeCompare(b.time_start))
       return slots
     },

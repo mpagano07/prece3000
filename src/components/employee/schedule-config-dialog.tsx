@@ -105,31 +105,19 @@ export function ScheduleConfigDialog({ open, onOpenChange }: ScheduleConfigDialo
   const { data: divisionSchedules, isLoading: divisionLoading } = useQuery({
     queryKey: ["division-schedules-for-employees", school?.id],
     queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("division_schedules")
-        .select(`
-          teacher_id,
-          day_of_week,
-          time_start,
-          time_end,
-          division:divisions!inner(name),
-          subject:subjects!inner(name)
-        `)
-        .eq("school_id", school!.id)
-      if (error) throw error
+      const res = await fetch(`/api/division-schedules?school_id=${school!.id}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
       const map: Record<string, DivisionScheduleInfo[]> = {}
-      for (const s of data ?? []) {
+      for (const s of json.schedules ?? []) {
         const teacherId = s.teacher_id
         if (!map[teacherId]) map[teacherId] = []
-        const division = Array.isArray(s.division) ? s.division[0] : s.division
-        const subject = Array.isArray(s.subject) ? s.subject[0] : s.subject
         map[teacherId].push({
           day_of_week: s.day_of_week,
           time_start: s.time_start.slice(0, 5),
           time_end: s.time_end.slice(0, 5),
-          division_name: (division as { name: string }).name,
-          subject_name: (subject as { name: string }).name,
+          division_name: "",
+          subject_name: s.subject?.name ?? "",
         })
       }
       return map

@@ -68,10 +68,10 @@ export function AppSidebar({ onClose }: AppSidebarProps) {
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-14 items-center gap-3 border-b border-sidebar-border px-4">
         <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground text-xs font-bold">
-          {school?.name?.charAt(0) ?? "P"}
+          {school?.name?.charAt(0) ?? "E"}
         </div>
         <div className="flex-1 truncate text-sm font-medium">
-          {school?.name ?? "Preceptor"}
+          {school?.name ?? "ElPrece"}
         </div>
         {onClose && (
           <Button variant="ghost" size="icon-sm" onClick={onClose} className="-mr-1">
