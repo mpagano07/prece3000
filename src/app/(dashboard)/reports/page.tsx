@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
+import { format } from "date-fns"
 import {
-  FileDown,
-  FileText,
   Users,
   CalendarCheck,
   CalendarRange,
@@ -34,8 +33,8 @@ import {
 import { PageHeader } from "@/components/shared/page-header"
 import { useCourses, useDivisions } from "@/hooks/use-courses"
 import { useStudents } from "@/hooks/use-students"
+import { useActiveAcademicYear } from "@/hooks/use-academic-years"
 import { useAuth } from "@/contexts/auth-context"
-import { formatDate } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
 interface ReportType {
@@ -90,16 +89,29 @@ export default function ReportsPage() {
   const [courseId, setCourseId] = useState("")
   const [divisionId, setDivisionId] = useState("")
   const [studentId, setStudentId] = useState("")
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
+  const today = format(new Date(), "yyyy-MM-dd")
+  const [startDate, setStartDate] = useState(today)
+  const [endDate, setEndDate] = useState(today)
   const [isGenerating, setIsGenerating] = useState(false)
-  const previewRef = useRef<HTMLIFrameElement>(null)
 
-  const { data: courses } = useCourses()
+  const { data: activeAcademicYear } = useActiveAcademicYear()
+  const { data: courses } = useCourses(activeAcademicYear?.id)
   const { data: divisions } = useDivisions(courseId)
   const { data: students } = useStudents(divisionId)
 
   const report = REPORT_TYPES.find((r) => r.id === selectedReport)
+
+  const selectedCourseName = courses?.find((c) => c.id === courseId)?.name
+  const selectedDivisionName = divisions?.find((d) => d.id === divisionId)?.name
+
+  function selectReport(reportId: string) {
+    setSelectedReport(reportId)
+    setCourseId("")
+    setDivisionId("")
+    setStudentId("")
+    setStartDate(today)
+    setEndDate(today)
+  }
 
   const handleGenerate = async () => {
     if (!selectedReport) return
@@ -128,59 +140,159 @@ export default function ReportsPage() {
 
       let yPos = 44
 
+      if (courseId || divisionId) {
+        doc.setFontSize(9)
+        const infoParts: string[] = []
+        if (selectedCourseName) infoParts.push(`Curso: ${selectedCourseName}`)
+        if (selectedDivisionName) infoParts.push(`División: ${selectedDivisionName}`)
+        if (infoParts.length > 0) {
+          doc.text(infoParts.join(" · "), 14, yPos)
+          yPos += 6
+        }
+      }
+
       switch (selectedReport) {
         case "student_list": {
-          const studentData = students || []
-          if (studentData.length === 0) {
+          if (!divisionId) {
             doc.setFontSize(10)
-            doc.text("No hay estudiantes en la división seleccionada.", 14, yPos)
+            doc.text("Seleccioná una división para generar el reporte.", 14, yPos)
           } else {
-            autoTable(doc, {
-              startY: yPos,
-              head: [["Apellido", "Nombre", "DNI", "Estado"]],
-              body: studentData.map((s) => [
-                s.last_name,
-                s.first_name,
-                s.dni,
-                s.status === "active" ? "Activo" : "Inactivo",
-              ]),
-              styles: { fontSize: 8 },
-              headStyles: { fillColor: [59, 130, 246] },
-            })
+            const studentData = students || []
+            if (studentData.length === 0) {
+              doc.setFontSize(10)
+              doc.text("No hay estudiantes en la división seleccionada.", 14, yPos)
+            } else {
+              autoTable(doc, {
+                startY: yPos,
+                head: [["Apellido", "Nombre", "DNI", "Estado"]],
+                body: studentData.map((s) => [
+                  s.last_name,
+                  s.first_name,
+                  s.dni,
+                  s.status === "active" ? "Activo" : "Inactivo",
+                ]),
+                styles: { fontSize: 8 },
+                headStyles: { fillColor: [59, 130, 246] },
+              })
+            }
           }
           break
         }
-        case "daily_attendance":
+        case "daily_attendance": {
+          if (!divisionId) {
+            doc.setFontSize(10)
+            doc.text("Seleccioná una división para generar el reporte.", 14, yPos)
+          } else {
+            const supabase = (await import("@/lib/supabase/client")).createClient()
+            const { data: attendanceRecords } = await supabase
+              .from("attendance")
+              .select("*, students(first_name, last_name, dni)")
+              .eq("division_id", divisionId)
+              .eq("school_id", school!.id)
+              .gte("date", startDate || today)
+              .lte("date", endDate || today)
+              .order("date", { ascending: true })
+              .order("students(last_name)", { ascending: true })
+
+            const records = attendanceRecords ?? []
+            if (records.length === 0) {
+              doc.setFontSize(10)
+              doc.text("No hay registros de asistencia en el período seleccionado.", 14, yPos)
+            } else {
+              doc.setFontSize(10)
+              doc.text(
+                `Rango de fechas: ${startDate || today} a ${endDate || today}`,
+                14,
+                yPos
+              )
+              yPos += 8
+              autoTable(doc, {
+                startY: yPos,
+                head: [["Fecha", "Alumno", "DNI", "Estado"]],
+                body: records.map((r) => [
+                  format(new Date(r.date), "dd/MM/yyyy"),
+                  `${r.students?.last_name ?? ""}, ${r.students?.first_name ?? ""}`,
+                  r.students?.dni ?? "",
+                  r.status === "present" ? "Presente"
+                    : r.status === "absent" ? "Ausente"
+                    : r.status === "absent_justified" ? "Ausente Justif."
+                    : r.status === "late" ? "Tarde"
+                    : r.status === "early_withdrawal" ? "Retiro Anticipado"
+                    : r.status,
+                ]),
+                styles: { fontSize: 8 },
+                headStyles: { fillColor: [59, 130, 246] },
+              })
+            }
+          }
+          break
+        }
         case "monthly_attendance": {
-          doc.setFontSize(10)
-          doc.text(
-            `Rango de fechas: ${startDate || "—"} a ${endDate || "—"}`,
-            14,
-            yPos
-          )
-          doc.setFontSize(9)
-          doc.text(
-            "Los datos de asistencia se generarán desde el sistema.",
-            14,
-            yPos + 7
-          )
-          yPos += 14
-          autoTable(doc, {
-            startY: yPos,
-            head: [["Fecha", "Presentes", "Ausentes", "Justificados", "Tardes"]],
-            body: [
-              ["—", "—", "—", "—", "—"],
-              ["—", "—", "—", "—", "—"],
-            ],
-            styles: { fontSize: 8 },
-            headStyles: { fillColor: [59, 130, 246] },
-          })
+          if (!divisionId) {
+            doc.setFontSize(10)
+            doc.text("Seleccioná una división para generar el reporte.", 14, yPos)
+          } else {
+            const supabase = (await import("@/lib/supabase/client")).createClient()
+            const { data: attendanceRecords } = await supabase
+              .from("attendance")
+              .select("date, status")
+              .eq("division_id", divisionId)
+              .eq("school_id", school!.id)
+              .gte("date", startDate || today)
+              .lte("date", endDate || today)
+              .order("date", { ascending: true })
+
+            const records = attendanceRecords ?? []
+            if (records.length === 0) {
+              doc.setFontSize(10)
+              doc.text("No hay registros de asistencia en el período seleccionado.", 14, yPos)
+            } else {
+              doc.setFontSize(10)
+              doc.text(
+                `Rango de fechas: ${startDate || today} a ${endDate || today}`,
+                14,
+                yPos
+              )
+              yPos += 8
+
+              const summaryMap = new Map<string, { present: number; absent: number; absent_justified: number; late: number; early_withdrawal: number }>()
+              for (const r of records) {
+                if (!summaryMap.has(r.date)) {
+                  summaryMap.set(r.date, { present: 0, absent: 0, absent_justified: 0, late: 0, early_withdrawal: 0 })
+                }
+                const day = summaryMap.get(r.date)!
+                if (r.status === "present") day.present++
+                else if (r.status === "absent") day.absent++
+                else if (r.status === "absent_justified") day.absent_justified++
+                else if (r.status === "late") day.late++
+                else if (r.status === "early_withdrawal") day.early_withdrawal++
+              }
+
+              autoTable(doc, {
+                startY: yPos,
+                head: [["Fecha", "Presentes", "Ausentes", "Justif.", "Tardes", "Retiro Ant."]],
+                body: Array.from(summaryMap.entries()).map(([date, counts]) => [
+                  format(new Date(date), "dd/MM/yyyy"),
+                  counts.present,
+                  counts.absent,
+                  counts.absent_justified,
+                  counts.late,
+                  counts.early_withdrawal,
+                ]),
+                styles: { fontSize: 8 },
+                headStyles: { fillColor: [59, 130, 246] },
+              })
+            }
+          }
           break
         }
         case "student_history": {
+          const selectedStudent = studentId
+            ? students?.find((s) => s.id === studentId)
+            : null
           doc.setFontSize(10)
           doc.text(
-            `Estudiante ID: ${studentId || "No seleccionado"}`,
+            `Estudiante: ${selectedStudent ? `${selectedStudent.last_name}, ${selectedStudent.first_name}` : "No seleccionado"}`,
             14,
             yPos
           )
@@ -213,7 +325,7 @@ export default function ReportsPage() {
         }
       }
 
-      yPos = (doc as any).lastAutoTable?.finalY || yPos
+      yPos = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable?.finalY || yPos
       yPos += 10
       doc.setFontSize(7)
       doc.text(
@@ -243,7 +355,7 @@ export default function ReportsPage() {
               "cursor-pointer transition-all hover:border-primary/50 hover:shadow-sm",
               selectedReport === reportType.id && "border-primary ring-1 ring-primary"
             )}
-            onClick={() => setSelectedReport(reportType.id)}
+            onClick={() => selectReport(reportType.id)}
           >
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
@@ -269,7 +381,7 @@ export default function ReportsPage() {
                 <>
                   <div className="space-y-2">
                     <Label>Curso</Label>
-                    <Select value={courseId} onValueChange={(v) => setCourseId(v ?? "")}>
+                    <Select value={courseId} onValueChange={(v) => { setCourseId(v ?? ""); setDivisionId("") }}>
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar curso" />
                       </SelectTrigger>
