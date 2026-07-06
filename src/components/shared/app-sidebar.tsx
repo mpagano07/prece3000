@@ -20,6 +20,7 @@ import {
   Shield,
   UserCog,
   ClipboardCheck,
+  ScrollText,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,7 @@ const navItems: NavItem[] = [
   { href: "/communications", label: "Comunicaciones", icon: MessageSquare, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary", "teacher"] },
   { href: "/documents", label: "Documentos", icon: FileText, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
   { href: "/reports", label: "Reportes", icon: BarChart3, roles: ["super_admin", "school_admin", "director", "secretary"] },
+  { href: "/history", label: "Historiales", icon: ScrollText, roles: ["super_admin", "director"] },
   { href: "/settings", label: "Configuración", icon: Settings, roles: ["super_admin", "school_admin", "director"] },
   { href: "/admin/users", label: "Usuarios", icon: UserCog, roles: ["super_admin"] },
   { href: "/admin/schools", label: "Escuelas", icon: Shield, roles: ["super_admin"] },
