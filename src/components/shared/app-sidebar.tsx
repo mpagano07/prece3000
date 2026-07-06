@@ -47,7 +47,6 @@ const navItems: NavItem[] = [
   { href: "/documents", label: "Documentos", icon: FileText, roles: ["super_admin", "school_admin", "director", "preceptor", "secretary"] },
   { href: "/reports", label: "Reportes", icon: BarChart3, roles: ["super_admin", "school_admin", "director", "secretary"] },
   { href: "/settings", label: "Configuración", icon: Settings, roles: ["super_admin", "school_admin", "director"] },
-  { href: "/admin/academic-years", label: "Años Académicos", icon: Calendar, roles: ["super_admin"] },
   { href: "/admin/users", label: "Usuarios", icon: UserCog, roles: ["super_admin"] },
   { href: "/admin/schools", label: "Escuelas", icon: Shield, roles: ["super_admin"] },
 ]
