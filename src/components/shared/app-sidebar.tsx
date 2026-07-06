@@ -57,12 +57,12 @@ interface AppSidebarProps {
 
 export function AppSidebar({ onClose }: AppSidebarProps) {
   const pathname = usePathname()
-  const { profile, school } = useAuth()
+  const { profile, school, isLoading } = useAuth()
   const role = profile?.role
 
-  const filteredItems = navItems.filter(
-    (item) => !role || item.roles.includes(role)
-  )
+  const filteredItems = role
+    ? navItems.filter((item) => item.roles.includes(role))
+    : []
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
@@ -82,6 +82,11 @@ export function AppSidebar({ onClose }: AppSidebarProps) {
       </div>
 
       <ScrollArea className="flex-1 px-2 py-2">
+        {isLoading && (
+          <div className="flex items-center justify-center py-8 text-xs text-sidebar-foreground/50">
+            Cargando...
+          </div>
+        )}
         <nav className="flex flex-col gap-0.5">
           {filteredItems.map((item) => {
             const Icon = item.icon
@@ -109,21 +114,23 @@ export function AppSidebar({ onClose }: AppSidebarProps) {
         </nav>
       </ScrollArea>
 
-      <div className="border-t border-sidebar-border p-3">
-        <Separator className="mb-3" />
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground text-xs font-medium">
-            {profile?.first_name?.charAt(0) ?? "U"}
-            {profile?.last_name?.charAt(0) ?? ""}
-          </div>
-          <div className="flex-1 truncate text-xs">
-            <p className="font-medium">
-              {profile?.first_name ?? "Usuario"} {profile?.last_name ?? ""}
-            </p>
-            <p className="text-sidebar-foreground/50 capitalize">{role?.replace("_", " ") ?? ""}</p>
+      {!isLoading && (
+        <div className="border-t border-sidebar-border p-3">
+          <Separator className="mb-3" />
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground text-xs font-medium">
+              {profile?.first_name?.charAt(0) ?? "U"}
+              {profile?.last_name?.charAt(0) ?? ""}
+            </div>
+            <div className="flex-1 truncate text-xs">
+              <p className="font-medium">
+                {profile?.first_name ?? "Usuario"} {profile?.last_name ?? ""}
+              </p>
+              <p className="text-sidebar-foreground/50 capitalize">{role?.replace("_", " ") ?? ""}</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

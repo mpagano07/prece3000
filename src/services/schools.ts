@@ -6,7 +6,6 @@ export class SchoolService {
     const { data, error } = await supabase
       .from("schools")
       .select("*")
-      .eq("active", true)
       .order("name")
 
     if (error) throw new Error(`Error fetching schools: ${error.message}`)

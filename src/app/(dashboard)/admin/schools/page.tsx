@@ -27,13 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+
 import {
   Card,
   CardContent,
@@ -135,26 +129,43 @@ export default function AdminSchoolsPage() {
           action={{ label: "Nueva Escuela", onClick: () => setIsCreateOpen(true) }}
         />
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {schools?.map((school) => (
             <Card key={school.id}>
-              <CardHeader>
+              <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Building2 className="size-5" />
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Building2 className="size-4" />
                     </div>
-                    <div>
-                      <CardTitle className="text-base">{school.name}</CardTitle>
-                      <CardDescription>
-                        {school.address || "Sin dirección"}
-                      </CardDescription>
-                    </div>
+                    <CardTitle className="text-sm truncate">{school.name}</CardTitle>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant={school.active ? "default" : "secondary"}>
                       {school.active ? "Activa" : "Inactiva"}
                     </Badge>
+                    {!school.active && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={async () => {
+                          try {
+                            const supabase = createClient()
+                            const { error } = await supabase
+                              .from("schools")
+                              .update({ active: true })
+                              .eq("id", school.id)
+                            if (error) throw error
+                            toast.success("Escuela reactivada")
+                            queryClient.invalidateQueries({ queryKey: ["schools"] })
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "Error al reactivar escuela")
+                          }
+                        }}
+                      >
+                        <Check className="size-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -162,71 +173,65 @@ export default function AdminSchoolsPage() {
                     >
                       <Pencil className="size-3.5" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => setDeleteSchoolId(school.id)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
+                    {school.active && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteSchoolId(school.id)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:flex sm:gap-4">
-                  {school.phone && (
-                    <span className="flex items-center gap-1">
-                      <SchoolIcon className="size-3" />
-                      {school.phone}
-                    </span>
-                  )}
-                  {school.email && (
-                    <span className="flex items-center gap-1">
-                      <SchoolIcon className="size-3" />
-                      {school.email}
-                    </span>
-                  )}
+              <CardContent className="pb-3">
+                {(school.phone || school.email) && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {school.phone && (
+                      <span className="flex items-center gap-1">
+                        <SchoolIcon className="size-3 shrink-0" />
+                        {school.phone}
+                      </span>
+                    )}
+                    {school.email && (
+                      <span className="flex items-center gap-1">
+                        <SchoolIcon className="size-3 shrink-0" />
+                        {school.email}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => handleShowStats(school.id)}
+                  >
+                    Ver estadísticas
+                  </Button>
                 </div>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => handleShowStats(school.id)}
-                >
-                  Ver estadísticas
-                </Button>
-
                 {expandedSchool === school.id && stats[school.id] && (
-                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div className="rounded-lg bg-muted p-3 text-center">
-                      <Users className="mx-auto mb-1 size-4 text-muted-foreground" />
-                      <p className="text-lg font-bold">
-                        {stats[school.id].studentsCount}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Estudiantes</p>
+                  <div className="mt-2 grid grid-cols-4 gap-2">
+                    <div className="rounded-md bg-muted py-2 text-center">
+                      <p className="text-sm font-bold">{stats[school.id].studentsCount}</p>
+                      <p className="text-[10px] text-muted-foreground">Alumnos</p>
                     </div>
-                    <div className="rounded-lg bg-muted p-3 text-center">
-                      <GraduationCap className="mx-auto mb-1 size-4 text-muted-foreground" />
-                      <p className="text-lg font-bold">
-                        {stats[school.id].teachersCount}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Docentes</p>
+                    <div className="rounded-md bg-muted py-2 text-center">
+                      <p className="text-sm font-bold">{stats[school.id].teachersCount}</p>
+                      <p className="text-[10px] text-muted-foreground">Docentes</p>
                     </div>
-                    <div className="rounded-lg bg-muted p-3 text-center">
-                      <BookOpen className="mx-auto mb-1 size-4 text-muted-foreground" />
-                      <p className="text-lg font-bold">
-                        {stats[school.id].coursesCount}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Cursos</p>
+                    <div className="rounded-md bg-muted py-2 text-center">
+                      <p className="text-sm font-bold">{stats[school.id].coursesCount}</p>
+                      <p className="text-[10px] text-muted-foreground">Cursos</p>
                     </div>
-                    <div className="rounded-lg bg-muted p-3 text-center">
-                      <Layers className="mx-auto mb-1 size-4 text-muted-foreground" />
-                      <p className="text-lg font-bold">
-                        {stats[school.id].divisionsCount}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Divisiones</p>
+                    <div className="rounded-md bg-muted py-2 text-center">
+                      <p className="text-sm font-bold">{stats[school.id].divisionsCount}</p>
+                      <p className="text-[10px] text-muted-foreground">Divisiones</p>
                     </div>
                   </div>
                 )}
@@ -246,14 +251,14 @@ export default function AdminSchoolsPage() {
         open={!!deleteSchoolId}
         onOpenChange={() => setDeleteSchoolId(null)}
         title="Desactivar escuela"
-        description="¿Está seguro de desactivar esta escuela? Los datos se conservarán pero la escuela dejará de estar operativa."
+        description="¿Está seguro? La escuela dejará de estar operativa pero los datos se conservarán."
         confirmLabel="Desactivar"
         onConfirm={async () => {
           if (!deleteSchoolId) return
           try {
             const supabase = createClient()
             await SchoolService.delete(supabase, deleteSchoolId)
-            toast.success("Escuela desactivada correctamente")
+            toast.success("Escuela desactivada")
             queryClient.invalidateQueries({ queryKey: ["schools"] })
             setDeleteSchoolId(null)
           } catch (err) {
@@ -279,14 +284,14 @@ function AcademicYearsDialog({
 }) {
   const queryClient = useQueryClient()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [newAY, setNewAY] = useState({ school_id: "", name: "", start_date: "", end_date: "" })
+  const [newAY, setNewAY] = useState({ name: "", start_date: "", end_date: "" })
   const [deleteAyId, setDeleteAyId] = useState<string | null>(null)
 
   const { data: schools } = useQuery({
     queryKey: ["schools"],
     queryFn: async () => {
       const supabase = createClient()
-      const { data, error } = await supabase.from("schools").select("id, name").order("name")
+      const { data, error } = await supabase.from("schools").select("id").eq("active", true).limit(1)
       if (error) throw error
       return data ?? []
     },
@@ -307,10 +312,11 @@ function AcademicYearsDialog({
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      if (!schools || schools.length === 0) throw new Error("No hay escuelas activas")
       const res = await fetch("/api/academic-years", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newAY),
+        body: JSON.stringify({ ...newAY, school_id: schools[0].id }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -319,7 +325,7 @@ function AcademicYearsDialog({
     onSuccess: () => {
       toast.success("Año académico creado")
       setIsCreateOpen(false)
-      setNewAY({ school_id: "", name: "", start_date: "", end_date: "" })
+      setNewAY({ name: "", start_date: "", end_date: "" })
       queryClient.invalidateQueries({ queryKey: ["admin-academic-years"] })
       queryClient.invalidateQueries({ queryKey: ["activeAcademicYear"] })
     },
@@ -376,7 +382,7 @@ function AcademicYearsDialog({
         <DialogHeader>
           <DialogTitle>Años Académicos</DialogTitle>
           <DialogDescription>
-            Gestioná los períodos lectivos de todas las instituciones.
+            Gestioná los períodos lectivos.
           </DialogDescription>
         </DialogHeader>
 
@@ -389,26 +395,10 @@ function AcademicYearsDialog({
               <DialogHeader>
                 <DialogTitle>Nuevo Año Académico</DialogTitle>
                 <DialogDescription>
-                  Creá un nuevo período lectivo. Se activará automáticamente si no hay otro activo para la misma institución.
+                  Creá un nuevo período lectivo. Se activará automáticamente si no hay otro activo.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label>Institución</Label>
-                  <Select
-                    value={newAY.school_id}
-                    onValueChange={(v) => setNewAY({ ...newAY, school_id: v })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Seleccionar institución" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {schools?.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-2">
                   <Label>Nombre</Label>
                   <Input
@@ -440,7 +430,7 @@ function AcademicYearsDialog({
                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
                 <Button
                   onClick={() => createMutation.mutate()}
-                  disabled={createMutation.isPending || !newAY.school_id || !newAY.name || !newAY.start_date || !newAY.end_date}
+                  disabled={createMutation.isPending || !newAY.name || !newAY.start_date || !newAY.end_date}
                 >
                   {createMutation.isPending ? "Creando..." : "Crear"}
                 </Button>
@@ -465,14 +455,12 @@ function AcademicYearsDialog({
                 <Card key={ay.id}>
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="size-4 text-muted-foreground shrink-0" />
-                        <div>
-                          <CardTitle className="text-sm">{ay.name}</CardTitle>
-                          <CardDescription className="text-xs">
-                            {schools?.find((s) => s.id === ay.school_id)?.name ?? "Escuela desconocida"}
-                          </CardDescription>
-                        </div>
+                      <Calendar className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0 ml-2">
+                        <CardTitle className="text-sm">{ay.name}</CardTitle>
+                        <CardDescription className="text-xs">
+                          {ay.start_date} — {ay.end_date}
+                        </CardDescription>
                       </div>
                       <Badge variant={ay.active ? "default" : "secondary"}>
                         {ay.active ? "Activo" : "Inactivo"}
@@ -480,9 +468,6 @@ function AcademicYearsDialog({
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="mb-2 text-xs text-muted-foreground">
-                      {ay.start_date} — {ay.end_date}
-                    </div>
                     <div className="flex gap-2">
                       {!ay.active ? (
                         <Button variant="outline" size="sm" className="text-xs"
