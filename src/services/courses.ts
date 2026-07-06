@@ -149,8 +149,8 @@ export const courseService = {
     return CourseService.getDivisions(supabase, courseId)
   },
   async create(data: Omit<Course, "id">) {
-    const { supabase } = await ensureContext()
-    return CourseService.create(supabase, data)
+    const { supabase, schoolId } = await ensureContext()
+    return CourseService.create(supabase, { ...data, school_id: schoolId })
   },
   async createDivision(data: Parameters<typeof CourseService.createDivision>[1]) {
     const { supabase } = await ensureContext()

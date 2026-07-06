@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   Building2,
   Plus,
@@ -18,6 +18,13 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -282,20 +289,40 @@ function AcademicYearsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { school } = useAuth()
   const queryClient = useQueryClient()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [newAY, setNewAY] = useState({ name: "", start_date: "", end_date: "" })
   const [deleteAyId, setDeleteAyId] = useState<string | null>(null)
+  const [selectedSchoolId, setSelectedSchoolId] = useState(school?.id ?? "")
 
-  const { data: schools } = useQuery({
-    queryKey: ["schools"],
+  useEffect(() => {
+    if (school?.id) setSelectedSchoolId(school.id)
+  }, [school?.id])
+
+  const { data: allSchools } = useQuery({
+    queryKey: ["admin-schools-list"],
     queryFn: async () => {
       const supabase = createClient()
-      const { data, error } = await supabase.from("schools").select("id").eq("active", true).limit(1)
+      const { data, error } = await supabase
+        .from("schools")
+        .select("id, name")
+        .eq("active", true)
+        .order("name")
       if (error) throw error
       return data ?? []
     },
   })
+
+  const schoolMap = useMemo(() => {
+    const map = new Map<string, string>()
+    if (allSchools) {
+      for (const s of allSchools) {
+        map.set(s.id, s.name)
+      }
+    }
+    return map
+  }, [allSchools])
 
   const { data: academicYears, isLoading } = useQuery({
     queryKey: ["admin-academic-years"],
@@ -312,11 +339,11 @@ function AcademicYearsDialog({
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!schools || schools.length === 0) throw new Error("No hay escuelas activas")
+      if (!selectedSchoolId) throw new Error("Seleccioná una escuela")
       const res = await fetch("/api/academic-years", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newAY, school_id: schools[0].id }),
+        body: JSON.stringify({ ...newAY, school_id: selectedSchoolId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -400,6 +427,19 @@ function AcademicYearsDialog({
               </DialogHeader>
               <div className="space-y-4 py-2">
                 <div className="space-y-2">
+                  <Label>Escuela</Label>
+                  <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar escuela" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allSchools?.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label>Nombre</Label>
                   <Input
                     placeholder="Ej: Ciclo Lectivo 2026"
@@ -461,6 +501,11 @@ function AcademicYearsDialog({
                         <CardDescription className="text-xs">
                           {ay.start_date} — {ay.end_date}
                         </CardDescription>
+                        {schoolMap.get(ay.school_id) && (
+                          <p className="mt-1 text-[11px] font-medium text-muted-foreground/70">
+                            {schoolMap.get(ay.school_id)}
+                          </p>
+                        )}
                       </div>
                       <Badge variant={ay.active ? "default" : "secondary"}>
                         {ay.active ? "Activo" : "Inactivo"}
