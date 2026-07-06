@@ -48,7 +48,7 @@ export function useMarkBulkAttendance() {
   const { school } = useAuth()
 
   return useMutation({
-    mutationFn: (data: {
+    mutationFn: async (data: {
       divisionId: string
       date: string
       records: Array<{
@@ -56,7 +56,23 @@ export function useMarkBulkAttendance() {
         status: AttendanceStatus
         observation?: string
       }>
-    }) => attendanceService.markBulk(data),
+    }) => {
+      const res = await fetch("/api/attendance/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schoolId: school?.id,
+          divisionId: data.divisionId,
+          date: data.date,
+          records: data.records,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? "Error al registrar asistencia masiva")
+      }
+      return res.json()
+    },
     onSuccess: (_, variables) => {
       toast.success("Asistencia registrada correctamente")
       queryClient.invalidateQueries({
