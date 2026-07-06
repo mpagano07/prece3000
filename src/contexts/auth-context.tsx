@@ -23,6 +23,8 @@ interface AuthContextValue {
   isLoading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
+  resetPassword: (email: string) => Promise<void>
+  updatePassword: (password: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -222,6 +224,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error
   }
 
+  const resetPassword = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/update-password`,
+    })
+    if (error) throw error
+  }
+
+  const updatePassword = async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) throw error
+  }
+
   const setActiveSchool = useCallback((s: School | null) => {
     setSchool(s)
     setActiveSchoolId(s?.id ?? null)
@@ -240,7 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, school, availableSchools, setActiveSchool, isLoading, signIn, signOut }}
+      value={{ user, profile, school, availableSchools, setActiveSchool, isLoading, signIn, signOut, resetPassword, updatePassword }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/client"
 import type { Communication, CommunicationType } from "@/types/database"
+import { getActiveSchoolId } from "@/lib/active-school"
 
 export class CommunicationService {
   static async create(
@@ -57,25 +58,20 @@ export class CommunicationService {
   }
 }
 
-let cachedUserId: string | null = null
-
 async function ensureContext(client = createClient()) {
-  if (!cachedUserId) {
-    const { data: { user } } = await client.auth.getUser()
-    if (!user) throw new Error("Not authenticated")
-    cachedUserId = user.id
-  }
-  const { getActiveSchoolId } = await import("@/lib/active-school")
+  const { data: { user } } = await client.auth.getUser()
+  if (!user) throw new Error("Not authenticated")
   const activeSchoolId = getActiveSchoolId()
   if (activeSchoolId) {
-    return { supabase: client, userId: cachedUserId, schoolId: activeSchoolId }
+    return { supabase: client, userId: user.id, schoolId: activeSchoolId }
   }
   const { data: profile } = await client
     .from("profiles")
     .select("school_id")
-    .eq("id", cachedUserId)
+    .eq("id", user.id)
     .maybeSingle()
-  return { supabase: client, userId: cachedUserId, schoolId: profile?.school_id ?? "" }
+  if (!profile?.school_id) throw new Error("No active school selected")
+  return { supabase: client, userId: user.id, schoolId: profile.school_id }
 }
 
 export const communicationService = {

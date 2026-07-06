@@ -61,12 +61,12 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             </AvatarFallback>
           </Avatar>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={8}>
+        <DropdownMenuContent align="end" sideOffset={8} className="min-w-56">
           <div className="px-2 py-1.5">
             <p className="text-sm font-medium">
               {profile?.first_name} {profile?.last_name}
             </p>
-            <p className="text-xs text-muted-foreground">{profile?.email}</p>
+            <p className="truncate text-xs text-muted-foreground">{profile?.email}</p>
           </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => signOut()}>
