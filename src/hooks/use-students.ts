@@ -15,6 +15,20 @@ export function useStudents(divisionId?: string) {
   })
 }
 
+export function useStudentsPaginated(
+  page: number,
+  pageSize: number,
+  filters?: { divisionId?: string; divisionIds?: string[] }
+) {
+  const { school } = useAuth()
+
+  return useQuery({
+    queryKey: ["students", school?.id, "page", page, pageSize, filters],
+    queryFn: () => studentService.getPage(page, pageSize, filters),
+    enabled: !!school?.id,
+  })
+}
+
 export function useStudent(id: string) {
   const { school } = useAuth()
 

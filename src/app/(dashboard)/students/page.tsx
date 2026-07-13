@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { useStudents, useStudentSearch } from "@/hooks/use-students"
+import { useStudentsPaginated, useStudentSearch } from "@/hooks/use-students"
 import { useCourses } from "@/hooks/use-courses"
 import { courseService } from "@/services/courses"
 import { LoadingScreen } from "@/components/shared/loading-screen"
@@ -33,10 +33,14 @@ import {
   Plus,
   Upload,
   Users,
+  ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react"
 import { getInitials } from "@/lib/utils"
 import type { DivisionWithCourse } from "@/types/database"
+
+const PAGE_SIZE = 20
 
 const statusBadge: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   active: "default",
@@ -55,6 +59,7 @@ export default function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [divisionId, setDivisionId] = useState("")
   const [courseId, setCourseId] = useState("")
+  const [page, setPage] = useState(0)
   const [debouncedSearch, setDebouncedSearch] = useState("")
 
   useEffect(() => {
@@ -75,8 +80,23 @@ export default function StudentsPage() {
     enabled: courseIds.length > 0,
   })
 
-  const { data: students, isLoading: studentsLoading } = useStudents(
-    divisionId || undefined
+  const divisionIdsForCourse = useMemo(() => {
+    if (!courseId) return undefined
+    return (allDivisions ?? [])
+      .filter((d) => d.course_id === courseId)
+      .map((d) => d.id)
+  }, [courseId, allDivisions])
+
+  const filters = useMemo(() => {
+    if (divisionId) return { divisionId }
+    if (divisionIdsForCourse && divisionIdsForCourse.length > 0) return { divisionIds: divisionIdsForCourse }
+    return undefined
+  }, [divisionId, divisionIdsForCourse])
+
+  const { data: pageData, isLoading: studentsLoading } = useStudentsPaginated(
+    page,
+    PAGE_SIZE,
+    filters
   )
   const { data: searchResults, isLoading: searchLoading } = useStudentSearch(
     debouncedSearch
@@ -84,8 +104,11 @@ export default function StudentsPage() {
 
   const displayStudents = useMemo(() => {
     if (debouncedSearch) return searchResults ?? []
-    return students ?? []
-  }, [debouncedSearch, searchResults, students])
+    return pageData?.data ?? []
+  }, [debouncedSearch, searchResults, pageData])
+
+  const totalStudents = pageData?.total ?? 0
+  const totalPages = Math.ceil(totalStudents / PAGE_SIZE)
 
   const divisionLookup = useMemo(() => {
     const map = new Map<string, DivisionWithCourse>()
@@ -93,25 +116,7 @@ export default function StudentsPage() {
     return map
   }, [allDivisions])
 
-  const filteredStudents = useMemo(() => {
-    let list = displayStudents
-    if (courseId) {
-      const divIds = new Set(
-        (allDivisions ?? [])
-          .filter((d) => d.course_id === courseId)
-          .map((d) => d.id)
-      )
-      list = list.filter((s) => s.division_id && divIds.has(s.division_id))
-    }
-    if (divisionId) {
-      list = list.filter((s) => s.division_id === divisionId)
-    }
-    return list
-  }, [displayStudents, courseId, divisionId, allDivisions])
-
-  const isLoading = studentsLoading || searchLoading || coursesLoading
-
-  if (isLoading) return <LoadingScreen />
+  if (coursesLoading) return <LoadingScreen />
 
   return (
     <div className="space-y-6">
@@ -132,12 +137,12 @@ export default function StudentsPage() {
           <Input
             placeholder="Buscar por nombre, apellido o DNI..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(0) }}
             className="pl-8"
           />
         </div>
         <div className="flex gap-2">
-          <Select value={courseId} onValueChange={(v) => { setCourseId(v ?? ""); setDivisionId("") }}>
+          <Select value={courseId} onValueChange={(v) => { setCourseId(v ?? ""); setDivisionId(""); setPage(0) }}>
             <SelectTrigger className="w-44">
               <SelectValue placeholder="Filtrar por curso" />
             </SelectTrigger>
@@ -150,7 +155,7 @@ export default function StudentsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={divisionId} onValueChange={(v) => setDivisionId(v ?? "")}>
+          <Select value={divisionId} onValueChange={(v) => { setDivisionId(v ?? ""); setPage(0) }}>
             <SelectTrigger className="w-44">
               <SelectValue placeholder="Filtrar por división" />
             </SelectTrigger>
@@ -166,7 +171,7 @@ export default function StudentsPage() {
         </div>
       </div>
 
-      {filteredStudents.length === 0 ? (
+      {displayStudents.length === 0 && !studentsLoading && !searchLoading ? (
         <EmptyState
           icon={<Users className="size-12" />}
           title={
@@ -189,7 +194,12 @@ export default function StudentsPage() {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
+        <div className="relative overflow-hidden rounded-lg border">
+          {(studentsLoading || searchLoading) && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
@@ -203,7 +213,7 @@ export default function StudentsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredStudents.map((student) => {
+              {displayStudents.map((student) => {
                 const div = student.division_id
                   ? divisionLookup.get(student.division_id)
                   : undefined
@@ -244,6 +254,42 @@ export default function StudentsPage() {
               })}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {!debouncedSearch && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 0}
+            onClick={() => setPage(page - 1)}
+          >
+            <ChevronLeft className="size-4" />
+            Anterior
+          </Button>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => (
+              <Button
+                key={i}
+                variant={i === page ? "default" : "outline"}
+                size="sm"
+                className="min-w-9"
+                onClick={() => setPage(i)}
+              >
+                {i + 1}
+              </Button>
+            ))}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage(page + 1)}
+          >
+            Siguiente
+            <ChevronRight className="size-4" />
+          </Button>
         </div>
       )}
     </div>

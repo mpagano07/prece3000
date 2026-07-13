@@ -319,6 +319,42 @@ export class StudentService {
     return urlData.publicUrl
   }
 
+  static async getPage(
+    supabase: SupabaseClient,
+    schoolId: string,
+    page: number,
+    pageSize: number,
+    filters?: { divisionId?: string; divisionIds?: string[] },
+    academicYearId?: string
+  ): Promise<{ data: Student[]; total: number }> {
+    const from = page * pageSize
+    const to = from + pageSize - 1
+
+    let query = supabase
+      .from("students")
+      .select("*", { count: "exact" })
+      .eq("school_id", schoolId)
+      .eq("status", "active")
+      .order("last_name", { ascending: true })
+      .order("first_name", { ascending: true })
+      .range(from, to)
+
+    if (filters?.divisionId) {
+      query = query.eq("division_id", filters.divisionId)
+    } else if (filters?.divisionIds && filters.divisionIds.length > 0) {
+      query = query.in("division_id", filters.divisionIds)
+    }
+
+    if (academicYearId) {
+      query = query.eq("academic_year_id", academicYearId)
+    }
+
+    const { data, error, count } = await query
+
+    if (error) throw new Error(`Error fetching students: ${error.message}`)
+    return { data: data ?? [], total: count ?? 0 }
+  }
+
   static async search(
     supabase: SupabaseClient,
     schoolId: string,
@@ -362,6 +398,14 @@ export const studentService = {
   async getAll(divisionId?: string) {
     const { supabase, schoolId } = await ensureContext()
     return StudentService.getAll(supabase, schoolId, divisionId)
+  },
+  async getPage(
+    page: number,
+    pageSize: number,
+    filters?: { divisionId?: string; divisionIds?: string[] }
+  ) {
+    const { supabase, schoolId } = await ensureContext()
+    return StudentService.getPage(supabase, schoolId, page, pageSize, filters)
   },
   async getById(id: string) {
     const { supabase } = await ensureContext()
