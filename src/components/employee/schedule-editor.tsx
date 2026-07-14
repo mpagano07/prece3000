@@ -15,9 +15,9 @@ import {
 import { DAY_LABELS } from "@/lib/constants"
 
 export interface ScheduleSlot {
-  day_of_week: number
-  time_start: string
-  time_end: string
+  dayOfWeek: number
+  timeStart: string
+  timeEnd: string
 }
 
 interface ScheduleEditorProps {
@@ -35,7 +35,7 @@ export function ScheduleEditor({ slots, onChange, compact }: ScheduleEditorProps
   }
 
   const addSlot = () => {
-    onChange([...slots, { day_of_week: 1, time_start: "08:00", time_end: "12:00" }])
+    onChange([...slots, { dayOfWeek: 1, timeStart: "08:00", timeEnd: "12:00" }])
   }
 
   const removeSlot = (index: number) => {
@@ -45,8 +45,8 @@ export function ScheduleEditor({ slots, onChange, compact }: ScheduleEditorProps
   const timeClash = (i: number, j: number) => {
     if (i === j) return false
     const a = slots[i], b = slots[j]
-    if (a.day_of_week !== b.day_of_week) return false
-    return a.time_start < b.time_end && b.time_start < a.time_end
+    if (a.dayOfWeek !== b.dayOfWeek) return false
+    return a.timeStart < b.timeEnd && b.timeStart < a.timeEnd
   }
 
   return (
@@ -60,8 +60,8 @@ export function ScheduleEditor({ slots, onChange, compact }: ScheduleEditorProps
                 <div className={compact ? "min-w-0 flex-1" : ""}>
                   {!compact && <Label className="text-[10px]">Día</Label>}
                   <Select
-                    value={String(slot.day_of_week)}
-                    onValueChange={(v) => updateSlot(i, "day_of_week", Number(v))}
+                    value={String(slot.dayOfWeek)}
+                    onValueChange={(v) => updateSlot(i, "dayOfWeek", Number(v))}
                   >
                     <SelectTrigger className={cn("h-7 text-xs", compact ? "w-[52px]" : "w-full")}>
                       <SelectValue />
@@ -79,8 +79,8 @@ export function ScheduleEditor({ slots, onChange, compact }: ScheduleEditorProps
                   {!compact && <Label className="text-[10px]">Desde</Label>}
                   <Input
                     type="time"
-                    value={slot.time_start}
-                    onChange={(e) => updateSlot(i, "time_start", e.target.value)}
+                    value={slot.timeStart}
+                    onChange={(e) => updateSlot(i, "timeStart", e.target.value)}
                     className={cn("h-7 text-xs", compact ? "w-[72px]" : "w-full")}
                   />
                 </div>
@@ -88,8 +88,8 @@ export function ScheduleEditor({ slots, onChange, compact }: ScheduleEditorProps
                   {!compact && <Label className="text-[10px]">Hasta</Label>}
                   <Input
                     type="time"
-                    value={slot.time_end}
-                    onChange={(e) => updateSlot(i, "time_end", e.target.value)}
+                    value={slot.timeEnd}
+                    onChange={(e) => updateSlot(i, "timeEnd", e.target.value)}
                     className={cn("h-7 text-xs", compact ? "w-[72px]" : "w-full")}
                   />
                 </div>

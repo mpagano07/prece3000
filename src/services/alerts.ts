@@ -1,123 +1,103 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
+"use server"
+
+import { db } from "@/lib/db"
+import { alerts, academicYears, students, attendance } from "@/lib/db/schema"
+import { eq, and, desc } from "drizzle-orm"
 import type { Alert, AlertType } from "@/types/database"
-import { format } from "date-fns"
 
-export class AlertService {
-  static async getBySchool(
-    supabase: SupabaseClient,
-    schoolId: string,
-    unreadOnly?: boolean
-  ): Promise<Alert[]> {
-    let query = supabase
-      .from("alerts")
-      .select("*, students(first_name, last_name)")
-      .eq("school_id", schoolId)
-      .order("created_at", { ascending: false })
-      .limit(100)
+export async function getAlertsBySchool(
+  schoolId: string,
+  unreadOnly?: boolean
+): Promise<Alert[]> {
+  const conditions = [eq(alerts.schoolId, schoolId)]
+  if (unreadOnly) conditions.push(eq(alerts.read, false))
 
-    if (unreadOnly) {
-      query = query.eq("read", false)
-    }
+  return db.query.alerts.findMany({
+    where: and(...conditions),
+    orderBy: (t, { desc: d }) => [d(t.createdAt)],
+    limit: 100,
+  }) as Promise<Alert[]>
+}
 
-    const { data, error } = await query
+export async function markAlertAsRead(id: string): Promise<void> {
+  await db.update(alerts).set({ read: true }).where(eq(alerts.id, id))
+}
 
-    if (error) throw new Error(`Error fetching alerts: ${error.message}`)
-    return data ?? []
+export async function markAllAlertsAsRead(schoolId: string): Promise<void> {
+  await db
+    .update(alerts)
+    .set({ read: true })
+    .where(and(eq(alerts.schoolId, schoolId), eq(alerts.read, false)))
+}
+
+export async function createAlert(
+  schoolId: string,
+  data: {
+    studentId?: string
+    type: AlertType
+    message: string
   }
+): Promise<Alert> {
+  const rows = await db
+    .insert(alerts)
+    .values({
+      schoolId,
+      studentId: data.studentId ?? null,
+      type: data.type,
+      message: data.message,
+      read: false,
+    })
+    .returning()
 
-  static async markAsRead(supabase: SupabaseClient, id: string): Promise<void> {
-    const { error } = await supabase
-      .from("alerts")
-      .update({ read: true })
-      .eq("id", id)
+  return rows[0] as Alert
+}
 
-    if (error) throw new Error(`Error marking alert as read: ${error.message}`)
-  }
+export async function checkAndGenerateAlerts(schoolId: string): Promise<Alert[]> {
+  const generatedAlerts: Alert[] = []
 
-  static async markAllAsRead(supabase: SupabaseClient, schoolId: string): Promise<void> {
-    const { error } = await supabase
-      .from("alerts")
-      .update({ read: true })
-      .eq("school_id", schoolId)
-      .eq("read", false)
+  const academicYear = await db.query.academicYears.findFirst({
+    where: and(
+      eq(academicYears.schoolId, schoolId),
+      eq(academicYears.active, true)
+    ),
+    columns: { id: true },
+  })
 
-    if (error) throw new Error(`Error marking all alerts as read: ${error.message}`)
-  }
+  if (!academicYear) return generatedAlerts
 
-  static async create(
-    supabase: SupabaseClient,
-    schoolId: string,
-    data: {
-      student_id?: string
-      type: AlertType
-      message: string
-    }
-  ): Promise<Alert> {
-    const { data: alert, error } = await supabase
-      .from("alerts")
-      .insert({
-        school_id: schoolId,
-        student_id: data.student_id ?? null,
-        type: data.type,
-        message: data.message,
-        read: false,
+  const excessiveAbsenceThreshold = 15
+
+  const activeStudents = await db.query.students.findMany({
+    where: and(eq(students.schoolId, schoolId), eq(students.status, "active")),
+    with: { attendance: true },
+  })
+
+  for (const student of activeStudents) {
+    const records = (student as typeof student & { attendance: Array<{ status: string }> }).attendance ?? []
+    const absences = records.filter(
+      (a) => a.status === "absent" || a.status === "absent_justified"
+    ).length
+
+    if (absences >= excessiveAbsenceThreshold) {
+      const existingAlert = await db.query.alerts.findFirst({
+        where: and(
+          eq(alerts.schoolId, schoolId),
+          eq(alerts.studentId, student.id),
+          eq(alerts.type, "excessive_absences"),
+          eq(alerts.read, false)
+        ),
       })
-      .select()
-      .single()
 
-    if (error) throw new Error(`Error creating alert: ${error.message}`)
-    return alert
-  }
-
-  static async checkAndGenerate(supabase: SupabaseClient, schoolId: string): Promise<Alert[]> {
-    const alerts: Alert[] = []
-
-    const { data: academicYear } = await supabase
-      .from("academic_years")
-      .select("id")
-      .eq("school_id", schoolId)
-      .eq("active", true)
-      .maybeSingle()
-
-    if (!academicYear) return alerts
-
-    const excessiveAbsenceThreshold = 15
-
-    const { data: students } = await supabase
-      .from("students")
-      .select("id, first_name, last_name, attendance(status)")
-      .eq("school_id", schoolId)
-      .eq("status", "active")
-
-    if (students) {
-      for (const student of students) {
-        const records = (student.attendance as { status: string }[]) ?? []
-        const absences = records.filter(
-          (a) => a.status === "absent" || a.status === "absent_justified"
-        ).length
-
-        if (absences >= excessiveAbsenceThreshold) {
-          const existingAlert = await supabase
-            .from("alerts")
-            .select("id")
-            .eq("school_id", schoolId)
-            .eq("student_id", student.id)
-            .eq("type", "excessive_absences")
-            .eq("read", false)
-            .maybeSingle()
-
-          if (!existingAlert.data) {
-            const alert = await AlertService.create(supabase, schoolId, {
-              student_id: student.id,
-              type: "excessive_absences",
-              message: `${student.first_name} ${student.last_name} tiene ${absences} inasistencias (umbral: ${excessiveAbsenceThreshold})`,
-            })
-            alerts.push(alert)
-          }
-        }
+      if (!existingAlert) {
+        const alert = await createAlert(schoolId, {
+          studentId: student.id,
+          type: "excessive_absences",
+          message: `${student.firstName} ${student.lastName} tiene ${absences} inasistencias (umbral: ${excessiveAbsenceThreshold})`,
+        })
+        generatedAlerts.push(alert)
       }
     }
-
-    return alerts
   }
+
+  return generatedAlerts
 }

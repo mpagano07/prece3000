@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { profiles, preceptorSchools, teacherSchools } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
+import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
@@ -13,99 +16,45 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json(
-        { error: "No autenticado" },
-        { status: 401 }
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
+      return NextResponse.json({ error: "No autenticado" }, { status: 401 })
+    }
+
+    if (school_ids && school_ids.length > 0) {
+      await db
+        .update(profiles)
+        .set({ schoolId: school_ids[0] })
+        .where(eq(profiles.id, user_id))
+
+      await db
+        .delete(preceptorSchools)
+        .where(eq(preceptorSchools.preceptorId, user_id))
+
+      await db.insert(preceptorSchools).values(
+        school_ids.map((sid: string) => ({
+          preceptorId: user_id,
+          schoolId: sid,
+        }))
+      )
+
+      await db
+        .delete(teacherSchools)
+        .where(eq(teacherSchools.teacherId, user_id))
+
+      await db.insert(teacherSchools).values(
+        school_ids.map((sid: string) => ({
+          teacherId: user_id,
+          schoolId: sid,
+        }))
       )
     }
 
-    const adminClient = createAdminClient()
-
-    if (school_ids && school_ids.length > 0) {
-      const { error: profileError } = await adminClient
-        .from("profiles")
-        .update({ school_id: school_ids[0] })
-        .eq("id", user_id)
-
-      if (profileError) {
-        return NextResponse.json(
-          { error: `Error al actualizar perfil: ${profileError.message}` },
-          { status: 500 }
-        )
-      }
-
-      const { error: deletePreceptorError } = await adminClient
-        .from("preceptor_schools")
-        .delete()
-        .eq("preceptor_id", user_id)
-
-      if (deletePreceptorError) {
-        return NextResponse.json(
-          { error: `Error al reasignar escuelas: ${deletePreceptorError.message}` },
-          { status: 500 }
-        )
-      }
-
-      const { error: insertPreceptorError } = await adminClient
-        .from("preceptor_schools")
-        .insert(
-          school_ids.map((sid: string) => ({
-            preceptor_id: user_id,
-            school_id: sid,
-          }))
-        )
-
-      if (insertPreceptorError) {
-        return NextResponse.json(
-          { error: `Error al asignar escuelas: ${insertPreceptorError.message}` },
-          { status: 500 }
-        )
-      }
-
-      const { error: deleteTeacherError } = await adminClient
-        .from("teacher_schools")
-        .delete()
-        .eq("teacher_id", user_id)
-
-      if (deleteTeacherError) {
-        return NextResponse.json(
-          { error: `Error al reasignar escuelas: ${deleteTeacherError.message}` },
-          { status: 500 }
-        )
-      }
-
-      const { error: insertTeacherError } = await adminClient
-        .from("teacher_schools")
-        .insert(
-          school_ids.map((sid: string) => ({
-            teacher_id: user_id,
-            school_id: sid,
-          }))
-        )
-
-      if (insertTeacherError) {
-        return NextResponse.json(
-          { error: `Error al asignar escuelas: ${insertTeacherError.message}` },
-          { status: 500 }
-        )
-      }
-    }
-
     if (role) {
-      const { error: roleError } = await adminClient
-        .from("profiles")
-        .update({ role })
-        .eq("id", user_id)
-
-      if (roleError) {
-        return NextResponse.json(
-          { error: `Error al actualizar rol: ${roleError.message}` },
-          { status: 500 }
-        )
-      }
+      await db
+        .update(profiles)
+        .set({ role: role as "super_admin" | "school_admin" | "director" | "preceptor" | "secretary" | "teacher" })
+        .where(eq(profiles.id, user_id))
     }
 
     return NextResponse.json({ success: true })

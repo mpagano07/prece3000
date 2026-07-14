@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { attendanceService } from "@/services/attendance"
+import { getByDivisionAndDate, markAttendance, getMonthlyReport } from "@/services/attendance"
 import { useAuth } from "@/contexts/auth-context"
 import type { Attendance, AttendanceStatus } from "@/types/database"
 
@@ -9,27 +9,27 @@ export function useAttendance(divisionId: string, date: string) {
 
   return useQuery({
     queryKey: ["attendance", school?.id, divisionId, date],
-    queryFn: () => attendanceService.getByDivisionAndDate(divisionId, date),
+    queryFn: () => getByDivisionAndDate(divisionId, date, school!.id),
     enabled: !!school?.id && !!divisionId && !!date,
   })
 }
 
 export function useMarkAttendance() {
   const queryClient = useQueryClient()
-  const { school } = useAuth()
+  const { school, profile } = useAuth()
 
   return useMutation({
     mutationFn: (data: {
-      student_id: string
-      division_id: string
+      studentId: string
+      divisionId: string
       date: string
       status: AttendanceStatus
       observation?: string
-    }) => attendanceService.mark(data),
+    }) => markAttendance(school!.id, data.studentId, data.divisionId, data.date, data.status, profile!.id, data.observation),
     onSuccess: (_, variables) => {
       toast.success("Asistencia registrada correctamente")
       queryClient.invalidateQueries({
-        queryKey: ["attendance", school?.id, variables.division_id],
+        queryKey: ["attendance", school?.id, variables.divisionId],
       })
       queryClient.invalidateQueries({
         queryKey: ["dashboard", school?.id, "stats"],
@@ -52,7 +52,7 @@ export function useMarkBulkAttendance() {
       divisionId: string
       date: string
       records: Array<{
-        student_id: string
+        studentId: string
         status: AttendanceStatus
         observation?: string
       }>
@@ -101,7 +101,7 @@ export function useAttendanceReport(
 
   return useQuery({
     queryKey: ["attendance", school?.id, divisionId, "report", year, month],
-    queryFn: () => attendanceService.getReport(divisionId, year, month),
+    queryFn: () => getMonthlyReport(school!.id, divisionId, year, month),
     enabled: !!school?.id && !!divisionId,
   })
 }

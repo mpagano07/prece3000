@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { dashboardService } from "@/services/dashboard"
+import { getDashboardStats, getBirthdays, getAlerts, getUpcomingEvents, getNearFailing } from "@/services/dashboard"
 import { useAuth } from "@/contexts/auth-context"
 
 export function useDashboardStats(divisionId?: string) {
@@ -7,7 +7,7 @@ export function useDashboardStats(divisionId?: string) {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "stats", divisionId],
-    queryFn: () => dashboardService.getStats(school!.id, divisionId),
+    queryFn: () => getDashboardStats(school!.id, divisionId),
     enabled: !!school?.id,
   })
 }
@@ -17,7 +17,7 @@ export function useDashboardBirthdays() {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "birthdays"],
-    queryFn: () => dashboardService.getBirthdays(school!.id),
+    queryFn: () => getBirthdays(school!.id),
     enabled: !!school?.id,
   })
 }
@@ -27,7 +27,7 @@ export function useDashboardAlerts() {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "alerts"],
-    queryFn: () => dashboardService.getAlerts(school!.id),
+    queryFn: () => getAlerts(school!.id),
     enabled: !!school?.id,
   })
 }
@@ -37,7 +37,7 @@ export function useUpcomingEvents() {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "upcoming-events"],
-    queryFn: () => dashboardService.getUpcomingEvents(school!.id),
+    queryFn: () => getUpcomingEvents(school!.id),
     enabled: !!school?.id,
   })
 }
@@ -47,7 +47,7 @@ export function useNearFailingStudents() {
 
   return useQuery({
     queryKey: ["dashboard", school?.id, "near-failing"],
-    queryFn: () => dashboardService.getNearFailingStudents(school!.id),
+    queryFn: () => getNearFailing(school!.id),
     enabled: !!school?.id,
   })
 }

@@ -121,12 +121,12 @@ export function AppSidebar({ onClose }: AppSidebarProps) {
           <Separator className="mb-3" />
           <div className="flex items-center gap-3">
             <div className="flex size-8 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-accent-foreground text-xs font-medium">
-              {profile?.first_name?.charAt(0) ?? "U"}
-              {profile?.last_name?.charAt(0) ?? ""}
+              {profile?.firstName?.charAt(0) ?? "U"}
+              {profile?.lastName?.charAt(0) ?? ""}
             </div>
             <div className="flex-1 truncate text-xs">
               <p className="font-medium">
-                {profile?.first_name ?? "Usuario"} {profile?.last_name ?? ""}
+                {profile?.firstName ?? "Usuario"} {profile?.lastName ?? ""}
               </p>
               <p className="text-sidebar-foreground/50 capitalize">{role?.replace("_", " ") ?? ""}</p>
             </div>

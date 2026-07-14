@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Loader2, Calendar, BookOpen, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
+import { getStaffBySchool } from "@/services/teachers"
 import {
   Dialog,
   DialogContent,
@@ -26,33 +27,33 @@ interface ScheduleConfigDialogProps {
 }
 
 interface DivisionScheduleInfo {
-  day_of_week: number
-  time_start: string
-  time_end: string
+  dayOfWeek: number
+  timeStart: string
+  timeEnd: string
   division_name: string
   subject_name: string
 }
 
 function defaultPreceptorSlots(): ScheduleSlot[] {
   return [
-    { day_of_week: 1, time_start: "08:00", time_end: "12:00" },
-    { day_of_week: 2, time_start: "08:00", time_end: "12:00" },
-    { day_of_week: 3, time_start: "08:00", time_end: "12:00" },
-    { day_of_week: 4, time_start: "08:00", time_end: "12:00" },
-    { day_of_week: 5, time_start: "08:00", time_end: "12:00" },
+    { dayOfWeek: 1, timeStart: "08:00", timeEnd: "12:00" },
+    { dayOfWeek: 2, timeStart: "08:00", timeEnd: "12:00" },
+    { dayOfWeek: 3, timeStart: "08:00", timeEnd: "12:00" },
+    { dayOfWeek: 4, timeStart: "08:00", timeEnd: "12:00" },
+    { dayOfWeek: 5, timeStart: "08:00", timeEnd: "12:00" },
   ]
 }
 
 function slotsEqual(a: ScheduleSlot[], b: ScheduleSlot[]) {
   if (a.length !== b.length) return false
   const sorted = (s: ScheduleSlot[]) =>
-    [...s].sort((x, y) => x.day_of_week - y.day_of_week || x.time_start.localeCompare(y.time_start))
+    [...s].sort((x, y) => x.dayOfWeek - y.dayOfWeek || x.timeStart.localeCompare(y.timeStart))
   const sa = sorted(a)
   const sb = sorted(b)
   return sa.every((s, i) =>
-    s.day_of_week === sb[i].day_of_week &&
-    s.time_start === sb[i].time_start &&
-    s.time_end === sb[i].time_end
+    s.dayOfWeek === sb[i].dayOfWeek &&
+    s.timeStart === sb[i].timeStart &&
+    s.timeEnd === sb[i].timeEnd
   )
 }
 
@@ -65,18 +66,7 @@ export function ScheduleConfigDialog({ open, onOpenChange }: ScheduleConfigDialo
 
   const { data: employees, isLoading: employeesLoading } = useQuery({
     queryKey: ["employees", school?.id],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("school_id", school!.id)
-        .in("role", ["teacher", "preceptor", "secretary"])
-        .order("role")
-        .order("last_name")
-      if (error) throw error
-      return data ?? []
-    },
+    queryFn: () => getStaffBySchool(school!.id),
     enabled: !!school?.id && open,
   })
 
@@ -87,14 +77,14 @@ export function ScheduleConfigDialog({ open, onOpenChange }: ScheduleConfigDialo
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       const map: Record<string, ScheduleSlot[]> = {}
-      for (const [empId, days] of Object.entries(data.schedules ?? {}) as [string, Record<string, { time_start: string; time_end: string }[]>][]) {
+      for (const [empId, days] of Object.entries(data.schedules ?? {}) as [string, Record<string, { timeStart: string; timeEnd: string }[]>][]) {
         const slots: ScheduleSlot[] = []
         for (const [dayStr, timeSlots] of Object.entries(days)) {
           for (const ts of timeSlots) {
-            slots.push({ day_of_week: Number(dayStr), time_start: ts.time_start, time_end: ts.time_end })
+            slots.push({ dayOfWeek: Number(dayStr), timeStart: ts.timeStart, timeEnd: ts.timeEnd })
           }
         }
-        slots.sort((a, b) => a.day_of_week - b.day_of_week || a.time_start.localeCompare(b.time_start))
+        slots.sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.timeStart.localeCompare(b.timeStart))
         map[empId] = slots
       }
       return map
@@ -110,12 +100,12 @@ export function ScheduleConfigDialog({ open, onOpenChange }: ScheduleConfigDialo
       if (!res.ok) throw new Error(json.error)
       const map: Record<string, DivisionScheduleInfo[]> = {}
       for (const s of json.schedules ?? []) {
-        const teacherId = s.teacher_id
+        const teacherId = s.teacherId
         if (!map[teacherId]) map[teacherId] = []
         map[teacherId].push({
-          day_of_week: s.day_of_week,
-          time_start: s.time_start.slice(0, 5),
-          time_end: s.time_end.slice(0, 5),
+          dayOfWeek: s.dayOfWeek,
+          timeStart: s.timeStart.slice(0, 5),
+          timeEnd: s.timeEnd.slice(0, 5),
           division_name: "",
           subject_name: s.subject?.name ?? "",
         })
@@ -134,18 +124,18 @@ export function ScheduleConfigDialog({ open, onOpenChange }: ScheduleConfigDialo
 
       for (const slot of existingSchedules[emp.id] ?? []) {
         merged.push(slot)
-        seenDays.add(slot.day_of_week)
+        seenDays.add(slot.dayOfWeek)
       }
 
       for (const ds of divisionSchedules[emp.id] ?? []) {
-        if (!seenDays.has(ds.day_of_week)) {
-          merged.push({ day_of_week: ds.day_of_week, time_start: ds.time_start, time_end: ds.time_end })
-          seenDays.add(ds.day_of_week)
+        if (!seenDays.has(ds.dayOfWeek)) {
+          merged.push({ dayOfWeek: ds.dayOfWeek, timeStart: ds.timeStart, timeEnd: ds.timeEnd })
+          seenDays.add(ds.dayOfWeek)
         }
       }
 
       if (merged.length > 0) {
-        merged.sort((a, b) => a.day_of_week - b.day_of_week || a.time_start.localeCompare(b.time_start))
+        merged.sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.timeStart.localeCompare(b.timeStart))
         next[emp.id] = merged
       } else if (emp.role === "secretary" || emp.role === "preceptor") {
         next[emp.id] = defaultPreceptorSlots()
@@ -191,11 +181,11 @@ export function ScheduleConfigDialog({ open, onOpenChange }: ScheduleConfigDialo
         if (!res.ok) throw new Error(data.error)
         return data
       }
-      const days: Record<string, { time_start: string; time_end: string }[]> = {}
+      const days: Record<string, { timeStart: string; timeEnd: string }[]> = {}
       for (const slot of slots) {
-        const key = String(slot.day_of_week)
+        const key = String(slot.dayOfWeek)
         if (!days[key]) days[key] = []
-        days[key].push({ time_start: slot.time_start, time_end: slot.time_end })
+        days[key].push({ timeStart: slot.timeStart, timeEnd: slot.timeEnd })
       }
       const res = await fetch("/api/employee-schedules", {
         method: "POST",
@@ -276,13 +266,13 @@ export function ScheduleConfigDialog({ open, onOpenChange }: ScheduleConfigDialo
                       <div className="flex items-center gap-2 min-w-0">
                         <Avatar className="size-7 shrink-0">
                           <AvatarFallback className="text-[10px]">
-                            {emp.first_name?.charAt(0) ?? "?"}
-                            {emp.last_name?.charAt(0) ?? ""}
+                            {emp.firstName?.charAt(0) ?? "?"}
+                            {emp.lastName?.charAt(0) ?? ""}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate leading-tight">
-                            {emp.last_name}, {emp.first_name}
+                            {emp.lastName}, {emp.firstName}
                           </p>
                           <p className="text-[11px] text-muted-foreground">{roleLabel}</p>
                         </div>
@@ -329,7 +319,7 @@ export function ScheduleConfigDialog({ open, onOpenChange }: ScheduleConfigDialo
                             {divSlots.map((ds, i) => (
                               <Badge key={i} variant="secondary" className="text-[10px] gap-1">
                                 <BookOpen className="size-2.5" />
-                                {DAY_LABELS[ds.day_of_week]} {ds.time_start}-{ds.time_end}
+                                {DAY_LABELS[ds.dayOfWeek]} {ds.timeStart}-{ds.timeEnd}
                                 <span className="text-muted-foreground">|</span>
                                 {ds.division_name} - {ds.subject_name}
                               </Badge>

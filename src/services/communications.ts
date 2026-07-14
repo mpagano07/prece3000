@@ -1,86 +1,49 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/client"
+"use server"
+
+import { db } from "@/lib/db"
+import { communications } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import type { Communication, CommunicationType } from "@/types/database"
-import { getActiveSchoolId } from "@/lib/active-school"
 
-export class CommunicationService {
-  static async create(
-    supabase: SupabaseClient,
-    schoolId: string,
-    data: {
-      student_id: string
-      type: CommunicationType
-      message: string
-      sent_to: string
-    }
-  ): Promise<Communication> {
-    const { data: communication, error } = await supabase
-      .from("communications")
-      .insert({
-        school_id: schoolId,
-        student_id: data.student_id,
-        type: data.type,
-        message: data.message,
-        sent_to: data.sent_to,
-        sent_at: new Date().toISOString(),
-        status: "sent",
-      })
-      .select()
-      .single()
-
-    if (error) throw new Error(`Error creating communication: ${error.message}`)
-    return communication
-  }
-
-  static async getByStudent(
-    supabase: SupabaseClient,
+export async function createCommunication(
+  schoolId: string,
+  data: {
     studentId: string
-  ): Promise<Communication[]> {
-    const { data, error } = await supabase
-      .from("communications")
-      .select("*")
-      .eq("student_id", studentId)
-      .order("sent_at", { ascending: false })
-
-    if (error) throw new Error(`Error fetching communications: ${error.message}`)
-    return data ?? []
+    type: CommunicationType
+    message: string
+    sentTo: string
   }
+): Promise<Communication> {
+  const rows = await db
+    .insert(communications)
+    .values({
+      schoolId,
+      studentId: data.studentId,
+      type: data.type,
+      message: data.message,
+      sentTo: data.sentTo,
+      sentAt: new Date(),
+      status: "sent",
+    })
+    .returning()
 
-  static generateWhatsAppLink(phone: string, message: string): string {
-    const cleaned = phone.replace(/[^\d]/g, "")
-    const encoded = encodeURIComponent(message)
-    return `https://wa.me/${cleaned}?text=${encoded}`
-  }
-
-  static generateMailTo(email: string, subject: string, body: string): string {
-    const params = new URLSearchParams({ subject, body })
-    return `mailto:${email}?${params.toString()}`
-  }
+  return rows[0] as Communication
 }
 
-async function ensureContext(client = createClient()) {
-  const { data: { user } } = await client.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  const activeSchoolId = getActiveSchoolId()
-  if (activeSchoolId) {
-    return { supabase: client, userId: user.id, schoolId: activeSchoolId }
-  }
-  const { data: profile } = await client
-    .from("profiles")
-    .select("school_id")
-    .eq("id", user.id)
-    .maybeSingle()
-  if (!profile?.school_id) throw new Error("No active school selected")
-  return { supabase: client, userId: user.id, schoolId: profile.school_id }
+export async function getCommunicationsByStudent(studentId: string): Promise<Communication[]> {
+  return db.query.communications.findMany({
+    where: eq(communications.studentId, studentId),
+    orderBy: (t, { desc }) => [desc(t.sentAt)],
+  }) as Promise<Communication[]>
 }
 
-export const communicationService = {
-  async create(data: Omit<Communication, "id" | "sent_at">) {
-    const { supabase, schoolId } = await ensureContext()
-    return CommunicationService.create(supabase, schoolId ?? "", data)
-  },
-  async getStudentCommunications(studentId: string) {
-    const { supabase } = await ensureContext()
-    return CommunicationService.getByStudent(supabase, studentId)
-  },
+export function generateWhatsAppLink(phone: string, message: string): string {
+  const cleaned = phone.replace(/[^\d]/g, "")
+  const encoded = encodeURIComponent(message)
+  return `https://wa.me/${cleaned}?text=${encoded}`
+}
+
+export function generateMailTo(email: string, subject: string, body: string): string {
+  const params = new URLSearchParams({ subject, body })
+  return `mailto:${email}?${params.toString()}`
 }

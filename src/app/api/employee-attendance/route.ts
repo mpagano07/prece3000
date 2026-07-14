@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { employeeAttendance } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
+import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
@@ -13,37 +16,30 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
-
-    const { error: deleteError } = await adminClient
-      .from("employee_attendance")
-      .delete()
-      .eq("school_id", school_id)
-      .eq("date", date)
-
-    if (deleteError) {
-      return NextResponse.json(
-        { error: `Error al actualizar registros: ${deleteError.message}` },
-        { status: 500 }
+    await db
+      .delete(employeeAttendance)
+      .where(
+        and(
+          eq(employeeAttendance.schoolId, school_id),
+          eq(employeeAttendance.date, date)
+        )
       )
-    }
 
-    const { error: insertError } = await adminClient
-      .from("employee_attendance")
-      .insert(records)
-
-    if (insertError) {
-      return NextResponse.json(
-        { error: `Error al guardar asistencia: ${insertError.message}` },
-        { status: 500 }
-      )
-    }
+    await db.insert(employeeAttendance).values(
+      records.map((r: Record<string, unknown>) => ({
+        schoolId: r.school_id as string,
+        employeeId: r.employee_id as string,
+        date: r.date as string,
+        status: r.status as string,
+        observation: (r.observation as string) ?? null,
+        createdBy: session.user.id,
+      }))
+    )
 
     return NextResponse.json({ success: true })
   } catch (err) {

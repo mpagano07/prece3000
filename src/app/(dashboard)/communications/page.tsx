@@ -182,7 +182,7 @@ export default function CommunicationsPage() {
                         )}
                         <div>
                           <CardTitle className="text-sm">
-                            {comm.sent_to}
+                            {comm.sentTo}
                           </CardTitle>
                           <p className="line-clamp-1 text-xs text-muted-foreground">
                             {comm.message}
@@ -190,16 +190,16 @@ export default function CommunicationsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {STATUS_ICONS[comm.status]}
+                        {STATUS_ICONS[comm.status ?? ""]}
                         <span className="text-xs text-muted-foreground hidden sm:inline">
-                          {STATUS_LABELS[comm.status] || comm.status}
+                          {STATUS_LABELS[comm.status ?? ""] || comm.status}
                         </span>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {formatDateTime(comm.sent_at)}
+                      {formatDateTime(comm.sentAt)}
                     </div>
                   </CardContent>
                 </Card>
@@ -217,18 +217,18 @@ export default function CommunicationsPage() {
                   <div className="rounded-lg bg-muted p-3 text-sm space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Enviado a:</span>
-                      <span className="font-medium">{comm.sent_to}</span>
+                      <span className="font-medium">{comm.sentTo}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Estado:</span>
                       <span className="flex items-center gap-1">
-                        {STATUS_ICONS[comm.status]}
-                        {STATUS_LABELS[comm.status] || comm.status}
+                        {STATUS_ICONS[comm.status ?? ""]}
+                        {STATUS_LABELS[comm.status ?? ""] || comm.status}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Fecha:</span>
-                      <span>{formatDateTime(comm.sent_at)}</span>
+                      <span>{formatDateTime(comm.sentAt)}</span>
                     </div>
                   </div>
                   <div>
@@ -277,11 +277,11 @@ function NewCommunicationForm({ onSuccess }: { onSuccess: () => void }) {
     e.preventDefault()
     if (!selectedStudentId || !type || !message || !sentTo) return
     await createComm.mutateAsync({
-      school_id: "",
-      student_id: selectedStudentId,
+      schoolId: "",
+      studentId: selectedStudentId,
       type: type as CommunicationType,
       message,
-      sent_to: sentTo,
+      sentTo: sentTo,
       status: "sent",
     })
     onSuccess()
@@ -316,12 +316,12 @@ function NewCommunicationForm({ onSuccess }: { onSuccess: () => void }) {
                   className="w-full px-3 py-1.5 text-left text-sm hover:bg-muted transition-colors"
                   onClick={() => {
                     setSelectedStudentId(s.id)
-                    const name = `${s.first_name} ${s.last_name}`
+                    const name = `${s.firstName} ${s.lastName}`
                     setSelectedStudentName(name)
                     setStudentSearch(name)
                   }}
                 >
-                  {s.first_name} {s.last_name} - {s.dni}
+                  {s.firstName} {s.lastName} - {s.dni}
                 </button>
               ))}
             </div>

@@ -1,5 +1,19 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/client"
+"use server"
+
+import { db } from "@/lib/db"
+import {
+  students,
+  studentGuardians,
+  authorizedPersons,
+  attendance,
+  preceptorBook,
+  communications,
+  documents,
+  subjects,
+  teacherAssignments,
+  divisions,
+} from "@/lib/db/schema"
+import { eq, and, or, ilike, asc, desc, sql } from "drizzle-orm"
 import type {
   Student,
   StudentGuardian,
@@ -9,422 +23,313 @@ import type {
   Communication,
   Document,
 } from "@/types/database"
-import { getActiveSchoolId } from "@/lib/active-school"
+import { uploadToR2 } from "@/lib/r2"
 
-export class StudentService {
-  static async getAll(
-    supabase: SupabaseClient,
-    schoolId: string,
-    divisionId?: string,
-    academicYearId?: string
-  ): Promise<Student[]> {
-    let query = supabase
-      .from("students")
-      .select("*")
-      .eq("school_id", schoolId)
-      .eq("status", "active")
-      .order("last_name", { ascending: true })
-      .order("first_name", { ascending: true })
+export async function getAllStudents(
+  schoolId: string,
+  divisionId?: string,
+  academicYearId?: string
+): Promise<Student[]> {
+  const conditions = [eq(students.schoolId, schoolId), eq(students.status, "active")]
+  if (divisionId) conditions.push(eq(students.divisionId, divisionId))
+  if (academicYearId) conditions.push(eq(students.academicYearId, academicYearId))
 
-    if (divisionId) {
-      query = query.eq("division_id", divisionId)
-    }
+  return db.query.students.findMany({
+    where: and(...conditions),
+    orderBy: (t, { asc: a }) => [a(t.lastName), a(t.firstName)],
+  }) as Promise<Student[]>
+}
 
-    if (academicYearId) {
-      query = query.eq("academic_year_id", academicYearId)
-    }
+export async function getStudentById(id: string): Promise<Student | null> {
+  return db.query.students.findFirst({
+    where: eq(students.id, id),
+  }) as Promise<Student | null>
+}
 
-    const { data, error } = await query
+export async function createStudent(data: {
+  schoolId: string
+  divisionId?: string | null
+  firstName: string
+  lastName: string
+  dni: string
+  birthDate?: string | null
+  gender?: string | null
+  nationality?: string | null
+  address?: string | null
+  phone?: string | null
+  email?: string | null
+  photoUrl?: string | null
+  bloodType?: string | null
+  healthInsurance?: string | null
+  healthAffiliateNumber?: string | null
+  doctorName?: string | null
+  doctorPhone?: string | null
+  allergies?: string | null
+  medication?: string | null
+  restrictions?: string | null
+  observations?: string | null
+  academicYearId?: string | null
+  guardians?: Omit<StudentGuardian, "id" | "studentId">[]
+  authorizedPersons?: Omit<AuthorizedPerson, "id" | "studentId">[]
+}): Promise<Student> {
+  const { guardians, authorizedPersons: authPersons, ...studentData } = data
 
-    if (error) throw new Error(`Error fetching students: ${error.message}`)
-    return data ?? []
-  }
+  const cleaned = Object.fromEntries(
+    Object.entries(studentData).map(([key, val]) => [key, val === "" ? null : val])
+  )
 
-  static async getById(supabase: SupabaseClient, id: string): Promise<Student | null> {
-    const { data, error } = await supabase
-      .from("students")
-      .select("*")
-      .eq("id", id)
-      .single()
+  const rows = await db
+    .insert(students)
+    .values({ ...cleaned, status: "active" } as typeof students.$inferInsert)
+    .returning()
 
-    if (error) throw new Error(`Error fetching student: ${error.message}`)
-    return data
-  }
+  const student = rows[0] as Student
 
-  static async create(
-    supabase: SupabaseClient,
-    data: {
-      school_id: string
-      division_id?: string | null
-      first_name: string
-      last_name: string
-      dni: string
-      birth_date?: string | null
-      gender?: string | null
-      nationality?: string | null
-      address?: string | null
-      phone?: string | null
-      email?: string | null
-      photo_url?: string | null
-      blood_type?: string | null
-      health_insurance?: string | null
-      health_affiliate_number?: string | null
-      doctor_name?: string | null
-      doctor_phone?: string | null
-      allergies?: string | null
-      medication?: string | null
-      restrictions?: string | null
-      observations?: string | null
-      academic_year_id?: string | null
-      guardians?: Omit<StudentGuardian, "id" | "student_id">[]
-      authorized_persons?: Omit<AuthorizedPerson, "id" | "student_id">[]
-    }
-  ): Promise<Student> {
-    const { guardians, authorized_persons, ...raw } = data
-
-    const studentData = Object.fromEntries(
-      Object.entries(raw).map(([key, val]) => [key, val === "" ? null : val])
+  if (guardians && guardians.length > 0) {
+    await db.insert(studentGuardians).values(
+      guardians.map((g) => ({ ...g, studentId: student.id }))
     )
-
-    const { data: student, error } = await supabase
-      .from("students")
-      .insert({
-        ...studentData,
-        status: "active",
-      })
-      .select()
-      .single()
-
-    if (error) throw new Error(`Error creating student: ${error.message}`)
-
-    if (guardians && guardians.length > 0) {
-      const { error: guardiansError } = await supabase.from("student_guardians").insert(
-        guardians.map((g) => ({ ...g, student_id: student.id }))
-      )
-
-      if (guardiansError) {
-        throw new Error(`Error creating guardians: ${guardiansError.message}`)
-      }
-    }
-
-    if (authorized_persons && authorized_persons.length > 0) {
-      const { error: personsError } = await supabase.from("authorized_persons").insert(
-        authorized_persons.map((p) => ({ ...p, student_id: student.id }))
-      )
-
-      if (personsError) {
-        throw new Error(`Error creating authorized persons: ${personsError.message}`)
-      }
-    }
-
-    return student
   }
 
-  static async update(
-    supabase: SupabaseClient,
-    id: string,
-    data: Partial<Omit<Student, "id" | "created_at" | "updated_at">> & {
-      guardians?: Omit<StudentGuardian, "id" | "student_id">[]
-      authorized_persons?: Omit<AuthorizedPerson, "id" | "student_id">[]
-    }
-  ): Promise<Student> {
-    const { guardians, authorized_persons, ...studentData } = data
-
-    const cleaned = Object.fromEntries(
-      Object.entries(studentData).map(([key, val]) => [key, val === "" ? null : val])
+  if (authPersons && authPersons.length > 0) {
+    await db.insert(authorizedPersons).values(
+      authPersons.map((p) => ({ ...p, studentId: student.id }))
     )
-
-    const { data: student, error } = await supabase
-      .from("students")
-      .update(cleaned)
-      .eq("id", id)
-      .select()
-      .single()
-
-    if (error) throw new Error(`Error updating student: ${error.message}`)
-
-    if (guardians !== undefined) {
-      await supabase.from("student_guardians").delete().eq("student_id", id)
-
-      if (guardians.length > 0) {
-        const { error: gErr } = await supabase
-          .from("student_guardians")
-          .insert(guardians.map((g) => ({ ...g, student_id: id })))
-        if (gErr) throw new Error(`Error updating guardians: ${gErr.message}`)
-      }
-    }
-
-    if (authorized_persons !== undefined) {
-      await supabase.from("authorized_persons").delete().eq("student_id", id)
-
-      if (authorized_persons.length > 0) {
-        const { error: aErr } = await supabase
-          .from("authorized_persons")
-          .insert(authorized_persons.map((p) => ({ ...p, student_id: id })))
-        if (aErr) throw new Error(`Error updating authorized persons: ${aErr.message}`)
-      }
-    }
-
-    return student
   }
 
-  static async delete(supabase: SupabaseClient, id: string): Promise<void> {
-    const { error } = await supabase
-      .from("students")
-      .update({ status: "inactive" })
-      .eq("id", id)
+  return student
+}
 
-    if (error) throw new Error(`Error deleting student: ${error.message}`)
+export async function updateStudent(
+  id: string,
+  data: Partial<Omit<Student, "id" | "createdAt" | "updatedAt">> & {
+    guardians?: Omit<StudentGuardian, "id" | "studentId">[]
+    authorizedPersons?: Omit<AuthorizedPerson, "id" | "studentId">[]
   }
+): Promise<Student> {
+  const { guardians, authorizedPersons: authPersons, ...studentData } = data
 
-  static async getGuardians(
-    supabase: SupabaseClient,
-    studentId: string
-  ): Promise<StudentGuardian[]> {
-    const { data, error } = await supabase
-      .from("student_guardians")
-      .select("*")
-      .eq("student_id", studentId)
-      .order("name")
+  const cleaned = Object.fromEntries(
+    Object.entries(studentData).map(([key, val]) => [key, val === "" ? null : val])
+  )
 
-    if (error) throw new Error(`Error fetching guardians: ${error.message}`)
-    return data ?? []
-  }
+  const rows = await db
+    .update(students)
+    .set(cleaned)
+    .where(eq(students.id, id))
+    .returning()
 
-  static async addGuardian(
-    supabase: SupabaseClient,
-    studentId: string,
-    data: Omit<StudentGuardian, "id" | "student_id">
-  ): Promise<StudentGuardian> {
-    const { data: guardian, error } = await supabase
-      .from("student_guardians")
-      .insert({ ...data, student_id: studentId })
-      .select()
-      .single()
+  const student = rows[0] as Student
 
-    if (error) throw new Error(`Error adding guardian: ${error.message}`)
-    return guardian
-  }
-
-  static async removeGuardian(supabase: SupabaseClient, id: string): Promise<void> {
-    const { error } = await supabase.from("student_guardians").delete().eq("id", id)
-
-    if (error) throw new Error(`Error removing guardian: ${error.message}`)
-  }
-
-  static async getAuthorizedPersons(
-    supabase: SupabaseClient,
-    studentId: string
-  ): Promise<AuthorizedPerson[]> {
-    const { data, error } = await supabase
-      .from("authorized_persons")
-      .select("*")
-      .eq("student_id", studentId)
-      .order("name")
-
-    if (error) throw new Error(`Error fetching authorized persons: ${error.message}`)
-    return data ?? []
-  }
-
-  static async addAuthorizedPerson(
-    supabase: SupabaseClient,
-    studentId: string,
-    data: Omit<AuthorizedPerson, "id" | "student_id">
-  ): Promise<AuthorizedPerson> {
-    const { data: person, error } = await supabase
-      .from("authorized_persons")
-      .insert({ ...data, student_id: studentId })
-      .select()
-      .single()
-
-    if (error) throw new Error(`Error adding authorized person: ${error.message}`)
-    return person
-  }
-
-  static async removeAuthorizedPerson(supabase: SupabaseClient, id: string): Promise<void> {
-    const { error } = await supabase.from("authorized_persons").delete().eq("id", id)
-
-    if (error) throw new Error(`Error removing authorized person: ${error.message}`)
-  }
-
-  static async getStudentHistory(
-    supabase: SupabaseClient,
-    studentId: string
-  ): Promise<{
-    attendance: Attendance[]
-    bookEntries: PreceptorBookEntry[]
-    communications: Communication[]
-    documents: Document[]
-  }> {
-    const [attendance, bookEntries, communications, documents] = await Promise.all([
-      supabase
-        .from("attendance")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("date", { ascending: false })
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("preceptor_book")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("communications")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("sent_at", { ascending: false }),
-      supabase
-        .from("documents")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("uploaded_at", { ascending: false }),
-    ])
-
-    if (attendance.error) throw new Error(`Error fetching attendance: ${attendance.error.message}`)
-    if (bookEntries.error) throw new Error(`Error fetching book entries: ${bookEntries.error.message}`)
-    if (communications.error) throw new Error(`Error fetching communications: ${communications.error.message}`)
-    if (documents.error) throw new Error(`Error fetching documents: ${documents.error.message}`)
-
-    return {
-      attendance: attendance.data ?? [],
-      bookEntries: bookEntries.data ?? [],
-      communications: communications.data ?? [],
-      documents: documents.data ?? [],
-    }
-  }
-
-  static async uploadPhoto(
-    supabase: SupabaseClient,
-    studentId: string,
-    file: File
-  ): Promise<string> {
-    const ext = file.name.split(".").pop()
-    const filePath = `${studentId}/${crypto.randomUUID()}.${ext}`
-
-    const { error: uploadError } = await supabase.storage
-      .from("student-photos")
-      .upload(filePath, file)
-
-    if (uploadError) throw new Error(`Error uploading photo: ${uploadError.message}`)
-
-    const { data: urlData } = supabase.storage.from("student-photos").getPublicUrl(filePath)
-
-    const { error: updateError } = await supabase
-      .from("students")
-      .update({ photo_url: urlData.publicUrl })
-      .eq("id", studentId)
-
-    if (updateError) throw new Error(`Error updating student photo URL: ${updateError.message}`)
-
-    return urlData.publicUrl
-  }
-
-  static async getPage(
-    supabase: SupabaseClient,
-    schoolId: string,
-    page: number,
-    pageSize: number,
-    filters?: { divisionId?: string; divisionIds?: string[] },
-    academicYearId?: string
-  ): Promise<{ data: Student[]; total: number }> {
-    const from = page * pageSize
-    const to = from + pageSize - 1
-
-    let query = supabase
-      .from("students")
-      .select("*", { count: "exact" })
-      .eq("school_id", schoolId)
-      .eq("status", "active")
-      .order("last_name", { ascending: true })
-      .order("first_name", { ascending: true })
-      .range(from, to)
-
-    if (filters?.divisionId) {
-      query = query.eq("division_id", filters.divisionId)
-    } else if (filters?.divisionIds && filters.divisionIds.length > 0) {
-      query = query.in("division_id", filters.divisionIds)
-    }
-
-    if (academicYearId) {
-      query = query.eq("academic_year_id", academicYearId)
-    }
-
-    const { data, error, count } = await query
-
-    if (error) throw new Error(`Error fetching students: ${error.message}`)
-    return { data: data ?? [], total: count ?? 0 }
-  }
-
-  static async search(
-    supabase: SupabaseClient,
-    schoolId: string,
-    query: string
-  ): Promise<Student[]> {
-    const searchTerm = `%${query}%`
-
-    const { data, error } = await supabase
-      .from("students")
-      .select("*, divisions!inner(name, courses!inner(name))")
-      .eq("school_id", schoolId)
-      .eq("status", "active")
-      .or(
-        `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},dni.ilike.${searchTerm}`
+  if (guardians !== undefined) {
+    await db.delete(studentGuardians).where(eq(studentGuardians.studentId, id))
+    if (guardians.length > 0) {
+      await db.insert(studentGuardians).values(
+        guardians.map((g) => ({ ...g, studentId: id }))
       )
-      .order("last_name", { ascending: true })
-      .limit(20)
+    }
+  }
 
-    if (error) throw new Error(`Error searching students: ${error.message}`)
-    return data ?? []
+  if (authPersons !== undefined) {
+    await db.delete(authorizedPersons).where(eq(authorizedPersons.studentId, id))
+    if (authPersons.length > 0) {
+      await db.insert(authorizedPersons).values(
+        authPersons.map((p) => ({ ...p, studentId: id }))
+      )
+    }
+  }
+
+  return student
+}
+
+export async function deleteStudent(id: string): Promise<void> {
+  await db.update(students).set({ status: "inactive" }).where(eq(students.id, id))
+}
+
+export async function getGuardians(studentId: string): Promise<StudentGuardian[]> {
+  return db.query.studentGuardians.findMany({
+    where: eq(studentGuardians.studentId, studentId),
+    orderBy: (t, { asc }) => [asc(t.name)],
+  }) as Promise<StudentGuardian[]>
+}
+
+export async function addGuardian(
+  studentId: string,
+  data: Omit<StudentGuardian, "id" | "studentId">
+): Promise<StudentGuardian> {
+  const rows = await db
+    .insert(studentGuardians)
+    .values({ ...data, studentId })
+    .returning()
+  return rows[0] as StudentGuardian
+}
+
+export async function removeGuardian(id: string): Promise<void> {
+  await db.delete(studentGuardians).where(eq(studentGuardians.id, id))
+}
+
+export async function getAuthorizedPersons(studentId: string): Promise<AuthorizedPerson[]> {
+  return db.query.authorizedPersons.findMany({
+    where: eq(authorizedPersons.studentId, studentId),
+    orderBy: (t, { asc }) => [asc(t.name)],
+  }) as Promise<AuthorizedPerson[]>
+}
+
+export async function addAuthorizedPerson(
+  studentId: string,
+  data: Omit<AuthorizedPerson, "id" | "studentId">
+): Promise<AuthorizedPerson> {
+  const rows = await db
+    .insert(authorizedPersons)
+    .values({ ...data, studentId })
+    .returning()
+  return rows[0] as AuthorizedPerson
+}
+
+export async function removeAuthorizedPerson(id: string): Promise<void> {
+  await db.delete(authorizedPersons).where(eq(authorizedPersons.id, id))
+}
+
+export async function getStudentHistory(studentId: string) {
+  const [att, book, comm, docs] = await Promise.all([
+    db.query.attendance.findMany({
+      where: eq(attendance.studentId, studentId),
+      orderBy: (t, { desc: d }) => [d(t.date), d(t.createdAt)],
+    }),
+    db.query.preceptorBook.findMany({
+      where: eq(preceptorBook.studentId, studentId),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    }),
+    db.query.communications.findMany({
+      where: eq(communications.studentId, studentId),
+      orderBy: (t, { desc }) => [desc(t.sentAt)],
+    }),
+    db.query.documents.findMany({
+      where: eq(documents.studentId, studentId),
+      orderBy: (t, { desc }) => [desc(t.uploadedAt)],
+    }),
+  ])
+
+  return {
+    attendance: att as Attendance[],
+    bookEntries: book as PreceptorBookEntry[],
+    communications: comm as Communication[],
+    documents: docs as Document[],
   }
 }
 
-async function ensureContext(client = createClient()) {
-  const { data: { user } } = await client.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  const activeSchoolId = getActiveSchoolId()
-  if (activeSchoolId) {
-    return { supabase: client, userId: user.id, schoolId: activeSchoolId }
-  }
-  const { data: profile } = await client
-    .from("profiles")
-    .select("school_id")
-    .eq("id", user.id)
-    .maybeSingle()
-  if (!profile?.school_id) throw new Error("No active school selected")
-  return { supabase: client, userId: user.id, schoolId: profile.school_id }
+export async function uploadPhoto(
+  studentId: string,
+  file: File
+): Promise<string> {
+  const ext = file.name.split(".").pop()
+  const key = `student-photos/${studentId}/${crypto.randomUUID()}.${ext}`
+  const url = await uploadToR2(key, file)
+
+  const rows = await db
+    .update(students)
+    .set({ photoUrl: url })
+    .where(eq(students.id, studentId))
+    .returning()
+
+  return url
 }
 
-export const studentService = {
-  async getAll(divisionId?: string) {
-    const { supabase, schoolId } = await ensureContext()
-    return StudentService.getAll(supabase, schoolId, divisionId)
-  },
-  async getPage(
-    page: number,
-    pageSize: number,
-    filters?: { divisionId?: string; divisionIds?: string[] }
-  ) {
-    const { supabase, schoolId } = await ensureContext()
-    return StudentService.getPage(supabase, schoolId, page, pageSize, filters)
-  },
-  async getById(id: string) {
-    const { supabase } = await ensureContext()
-    return StudentService.getById(supabase, id)
-  },
-  async create(data: Omit<Student, "id" | "created_at" | "updated_at">) {
-    const { supabase } = await ensureContext()
-    return StudentService.create(supabase, data as Parameters<typeof StudentService.create>[1])
-  },
-  async update(id: string, data: Partial<Student>) {
-    const { supabase } = await ensureContext()
-    return StudentService.update(supabase, id, data)
-  },
-  async getHistory(studentId: string) {
-    const { supabase } = await ensureContext()
-    return StudentService.getStudentHistory(supabase, studentId)
-  },
-  async search(query: string) {
-    const { supabase, schoolId } = await ensureContext()
-    return StudentService.search(supabase, schoolId, query)
-  },
+export async function getStudentPage(
+  schoolId: string,
+  page: number,
+  pageSize: number,
+  filters?: { divisionId?: string; divisionIds?: string[] },
+  academicYearId?: string
+): Promise<{ data: Student[]; total: number }> {
+  const conditions = [eq(students.schoolId, schoolId), eq(students.status, "active")]
+  if (filters?.divisionId) conditions.push(eq(students.divisionId, filters.divisionId))
+  if (academicYearId) conditions.push(eq(students.academicYearId, academicYearId))
+
+  const offset = page * pageSize
+
+  const [totalRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(students)
+    .where(and(...conditions))
+
+  const data = await db.query.students.findMany({
+    where: and(...conditions),
+    orderBy: (t, { asc }) => [asc(t.lastName), asc(t.firstName)],
+    limit: pageSize,
+    offset,
+  })
+
+  return { data: data as Student[], total: totalRow?.count ?? 0 }
+}
+
+export async function searchStudents(
+  schoolId: string,
+  query: string
+): Promise<Student[]> {
+  const searchTerm = `%${query}%`
+  return db.query.students.findMany({
+    where: and(
+      eq(students.schoolId, schoolId),
+      eq(students.status, "active"),
+      or(
+        ilike(students.firstName, searchTerm),
+        ilike(students.lastName, searchTerm),
+        ilike(students.dni, searchTerm)
+      )
+    ),
+    orderBy: (t, { asc }) => [asc(t.lastName)],
+    limit: 20,
+  }) as Promise<Student[]>
+}
+
+export async function getSubjectsForDivision(divisionId: string) {
+  const schedules = await db.query.divisionSchedules.findMany({
+    where: (t, { eq }) => eq(t.divisionId, divisionId),
+    with: { subject: { columns: { id: true, name: true } } },
+  })
+
+  const seen = new Set<string>()
+  const result: Array<{ id: string; name: string }> = []
+
+  for (const s of schedules) {
+    const sub = s.subject
+    if (sub && !seen.has(sub.id)) {
+      seen.add(sub.id)
+      result.push({ id: sub.id, name: sub.name })
+    }
+  }
+
+  const assignments = await db.query.teacherAssignments.findMany({
+    where: (t, { eq }) => eq(t.divisionId, divisionId),
+    with: { subject: { columns: { id: true, name: true } } },
+  })
+
+  for (const a of assignments) {
+    const sub = a.subject
+    if (sub && !seen.has(sub.id)) {
+      seen.add(sub.id)
+      result.push({ id: sub.id, name: sub.name })
+    }
+  }
+
+  result.sort((a, b) => a.name.localeCompare(b.name))
+  return result
+}
+
+export async function getAllStudentsForImport(schoolId: string) {
+  const allDivisions = await db.query.divisions.findMany({
+    where: (t, { eq }) => eq(t.schoolId, schoolId),
+    with: { course: { columns: { name: true } } },
+    columns: { id: true, name: true },
+  })
+
+  const divisionMap = new Map<string, string>()
+  for (const d of allDivisions) {
+    const courseName = d.course?.name ?? ""
+    const key = `${courseName.toLowerCase().trim()}|${d.name.toLowerCase().trim()}`
+    divisionMap.set(key, d.id)
+  }
+
+  return { divisionMap }
 }

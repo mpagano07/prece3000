@@ -1,131 +1,108 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
+"use server"
+
+import { db } from "@/lib/db"
+import { schools, academicYears, students, courses, divisions, profiles } from "@/lib/db/schema"
+import { eq, and, count, sql } from "drizzle-orm"
 import type { AcademicYear, School } from "@/types/database"
 
-export class SchoolService {
-  static async getAll(supabase: SupabaseClient): Promise<School[]> {
-    const { data, error } = await supabase
-      .from("schools")
-      .select("*")
-      .order("name")
+export async function getAllSchools(): Promise<School[]> {
+  return db.query.schools.findMany({
+    orderBy: (schools, { asc }) => [asc(schools.name)],
+  }) as Promise<School[]>
+}
 
-    if (error) throw new Error(`Error fetching schools: ${error.message}`)
-    return data ?? []
+export async function getSchoolById(id: string): Promise<School | null> {
+  return db.query.schools.findFirst({
+    where: eq(schools.id, id),
+  }) as Promise<School | null>
+}
+
+export async function createSchool(
+  data: Pick<School, "name"> & Partial<Omit<School, "id" | "createdAt" | "updatedAt">>
+): Promise<School> {
+  const rows = await db
+    .insert(schools)
+    .values({ ...data, active: data.active ?? true })
+    .returning()
+  return rows[0] as School
+}
+
+export async function updateSchool(
+  id: string,
+  data: Partial<Omit<School, "id" | "createdAt" | "updatedAt">>
+): Promise<School> {
+  const rows = await db
+    .update(schools)
+    .set(data)
+    .where(eq(schools.id, id))
+    .returning()
+  return rows[0] as School
+}
+
+export async function deleteSchool(id: string): Promise<void> {
+  await db.update(schools).set({ active: false }).where(eq(schools.id, id))
+}
+
+export async function getActiveAcademicYear(schoolId: string): Promise<AcademicYear | null> {
+  return db.query.academicYears.findFirst({
+    where: (t, { and }) => and(eq(t.schoolId, schoolId), eq(t.active, true)),
+  }) as Promise<AcademicYear | null>
+}
+
+export async function getSchoolStats(schoolId: string) {
+  const [studentsCount] = await db
+    .select({ count: count() })
+    .from(students)
+    .where(eq(students.schoolId, schoolId))
+
+  const [coursesCount] = await db
+    .select({ count: count() })
+    .from(courses)
+    .where(eq(courses.schoolId, schoolId))
+
+  const [divisionsCount] = await db
+    .select({ count: count() })
+    .from(divisions)
+    .where(eq(divisions.schoolId, schoolId))
+
+  const [teachersCount] = await db
+    .select({ count: count() })
+    .from(profiles)
+    .where(eq(profiles.role, "teacher"))
+
+  const activeYear = await db.query.academicYears.findFirst({
+    where: (t, { and }) => and(eq(t.schoolId, schoolId), eq(t.active, true)),
+    columns: { name: true },
+  })
+
+  return {
+    studentsCount: studentsCount.count,
+    coursesCount: coursesCount.count,
+    divisionsCount: divisionsCount.count,
+    teachersCount: teachersCount.count,
+    activeAcademicYear: activeYear?.name ?? null,
   }
+}
 
-  static async getById(supabase: SupabaseClient, id: string): Promise<School | null> {
-    const { data, error } = await supabase
-      .from("schools")
-      .select("*")
-      .eq("id", id)
-      .single()
+export async function updateSchoolInfo(schoolId: string, data: { name?: string; address?: string; phone?: string; email?: string }) {
+  const rows = await db.update(schools).set(data).where(eq(schools.id, schoolId)).returning()
+  return rows[0]
+}
 
-    if (error) throw new Error(`Error fetching school: ${error.message}`)
-    return data
-  }
+export async function reactivateSchool(schoolId: string) {
+  await db.update(schools).set({ active: true }).where(eq(schools.id, schoolId))
+}
 
-  static async create(
-    supabase: SupabaseClient,
-    data: Pick<School, "name"> & Partial<Omit<School, "id" | "created_at" | "updated_at">>
-  ): Promise<School> {
-    const { data: school, error } = await supabase
-      .from("schools")
-      .insert({ ...data, active: data.active ?? true })
-      .select()
-      .single()
+export async function getActiveSchools() {
+  return db.query.schools.findMany({
+    where: and(eq(schools.active, true)),
+    orderBy: (t, { asc }) => [asc(t.name)],
+  })
+}
 
-    if (error) throw new Error(`Error creating school: ${error.message}`)
-    return school
-  }
-
-  static async update(
-    supabase: SupabaseClient,
-    id: string,
-    data: Partial<Omit<School, "id" | "created_at" | "updated_at">>
-  ): Promise<School> {
-    const { data: school, error } = await supabase
-      .from("schools")
-      .update(data)
-      .eq("id", id)
-      .select()
-      .single()
-
-    if (error) throw new Error(`Error updating school: ${error.message}`)
-    return school
-  }
-
-  static async delete(supabase: SupabaseClient, id: string): Promise<void> {
-    const { error } = await supabase
-      .from("schools")
-      .update({ active: false })
-      .eq("id", id)
-
-    if (error) throw new Error(`Error deleting school: ${error.message}`)
-  }
-
-  static async getActiveAcademicYear(
-    supabase: SupabaseClient,
-    schoolId: string
-  ): Promise<AcademicYear | null> {
-    const { data, error } = await supabase
-      .from("academic_years")
-      .select("*")
-      .eq("school_id", schoolId)
-      .eq("active", true)
-      .maybeSingle()
-
-    if (error) throw new Error(`Error fetching active academic year: ${error.message}`)
-    return data
-  }
-
-  static async getStats(
-    supabase: SupabaseClient,
-    schoolId: string
-  ): Promise<{
-    studentsCount: number
-    coursesCount: number
-    divisionsCount: number
-    teachersCount: number
-    activeAcademicYear: string | null
-  }> {
-    const [students, courses, divisions, teachers, academicYears] = await Promise.all([
-      supabase
-        .from("students")
-        .select("id", { count: "exact", head: true })
-        .eq("school_id", schoolId)
-        .eq("status", "active"),
-      supabase
-        .from("courses")
-        .select("id", { count: "exact", head: true })
-        .eq("school_id", schoolId),
-      supabase
-        .from("divisions")
-        .select("id", { count: "exact", head: true })
-        .eq("school_id", schoolId),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("school_id", schoolId)
-        .eq("role", "teacher"),
-      supabase
-        .from("academic_years")
-        .select("name")
-        .eq("school_id", schoolId)
-        .eq("active", true)
-        .maybeSingle(),
-    ])
-
-    if (students.error) throw new Error(`Error counting students: ${students.error.message}`)
-    if (courses.error) throw new Error(`Error counting courses: ${courses.error.message}`)
-    if (divisions.error) throw new Error(`Error counting divisions: ${divisions.error.message}`)
-    if (teachers.error) throw new Error(`Error counting teachers: ${teachers.error.message}`)
-    if (academicYears.error) throw new Error(`Error fetching academic year: ${academicYears.error.message}`)
-
-    return {
-      studentsCount: students.count ?? 0,
-      coursesCount: courses.count ?? 0,
-      divisionsCount: divisions.count ?? 0,
-      teachersCount: teachers.count ?? 0,
-      activeAcademicYear: academicYears.data?.name ?? null,
-    }
-  }
+export async function getAcademicYearsBySchool(schoolId: string) {
+  return db.query.academicYears.findMany({
+    where: eq(academicYears.schoolId, schoolId),
+    orderBy: (t, { desc }) => [desc(t.startDate)],
+  })
 }

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { divisionSchedules, subjects, profiles } from "@/lib/db/schema"
+import { eq, and, asc } from "drizzle-orm"
+import { headers } from "next/headers"
 
 interface ScheduleRow {
   division_id: string
@@ -19,29 +22,19 @@ export async function GET(request: Request) {
     const teacher_id = searchParams.get("teacher_id")
     const school_id = searchParams.get("school_id")
 
-    const adminClient = createAdminClient()
-    let query = adminClient
-      .from("division_schedules")
-      .select("*, subject:subjects(name), teacher:profiles!teacher_id(first_name, last_name)")
+    const conditions = []
+    if (division_id) conditions.push(eq(divisionSchedules.divisionId, division_id))
+    if (teacher_id) conditions.push(eq(divisionSchedules.teacherId, teacher_id))
+    if (school_id) conditions.push(eq(divisionSchedules.schoolId, school_id))
 
-    if (division_id) {
-      query = query.eq("division_id", division_id)
-    }
-    if (teacher_id) {
-      query = query.eq("teacher_id", teacher_id)
-    }
-    if (school_id) {
-      query = query.eq("school_id", school_id)
-    }
-
-    const { data, error } = await query.order("day_of_week").order("time_start")
-
-    if (error) {
-      return NextResponse.json(
-        { error: `Error al obtener horarios: ${error.message}` },
-        { status: 500 }
-      )
-    }
+    const data = await db.query.divisionSchedules.findMany({
+      where: conditions.length > 0 ? and(...conditions) : undefined,
+      with: {
+        subject: { columns: { name: true } },
+        teacher: { columns: { firstName: true, lastName: true } },
+      },
+      orderBy: (t, { asc: a }) => [a(t.dayOfWeek), a(t.timeStart)],
+    })
 
     return NextResponse.json({ schedules: data ?? [] })
   } catch (err) {
@@ -63,25 +56,14 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
-
-    const { error: deleteError } = await adminClient
-      .from("division_schedules")
-      .delete()
-      .eq("division_id", division_id)
-
-    if (deleteError) {
-      return NextResponse.json(
-        { error: `Error al actualizar horarios: ${deleteError.message}` },
-        { status: 500 }
-      )
-    }
+    await db
+      .delete(divisionSchedules)
+      .where(eq(divisionSchedules.divisionId, division_id))
 
     const rows: ScheduleRow[] = []
     for (const slot of schedules) {
@@ -97,16 +79,17 @@ export async function POST(request: Request) {
     }
 
     if (rows.length > 0) {
-      const { error: insertError } = await adminClient
-        .from("division_schedules")
-        .insert(rows)
-
-      if (insertError) {
-        return NextResponse.json(
-          { error: `Error al guardar horarios: ${insertError.message}` },
-          { status: 500 }
-        )
-      }
+      await db.insert(divisionSchedules).values(
+        rows.map((r) => ({
+          divisionId: r.division_id,
+          subjectId: r.subject_id,
+          teacherId: r.teacher_id,
+          schoolId: r.school_id,
+          dayOfWeek: r.day_of_week,
+          timeStart: r.time_start,
+          timeEnd: r.time_end,
+        }))
+      )
     }
 
     return NextResponse.json({ success: true })

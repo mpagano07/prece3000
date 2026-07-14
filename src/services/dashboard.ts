@@ -1,160 +1,98 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/client"
-import type { Alert, Student, CalendarEvent } from "@/types/database"
+"use server"
+
+import { db } from "@/lib/db"
+import { attendance, students, alerts, calendarEvents } from "@/lib/db/schema"
+import { eq, and, gte, desc } from "drizzle-orm"
 import { format } from "date-fns"
+import type { Alert, Student, CalendarEvent } from "@/types/database"
 
-export class DashboardService {
-  static async getStats(
-    supabase: SupabaseClient,
-    schoolId: string,
-    divisionId?: string,
-    date?: string
-  ): Promise<{
-    present: number
-    absent: number
-    late: number
-    early_withdrawal: number
-    total: number
-  }> {
-    const today = date ?? format(new Date(), "yyyy-MM-dd")
+export async function getDashboardStats(
+  schoolId: string,
+  divisionId?: string,
+  date?: string
+) {
+  const today = date ?? format(new Date(), "yyyy-MM-dd")
+  const conditions = [eq(attendance.schoolId, schoolId), eq(attendance.date, today)]
+  if (divisionId) conditions.push(eq(attendance.divisionId, divisionId))
 
-    let query = supabase
-      .from("attendance")
-      .select("status")
-      .eq("school_id", schoolId)
-      .eq("date", today)
+  const records = await db.query.attendance.findMany({
+    where: and(...conditions),
+    columns: { status: true },
+  })
 
-    if (divisionId) {
-      query = query.eq("division_id", divisionId)
-    }
+  const present = records.filter((r) => r.status === "present").length
+  const absent = records.filter(
+    (r) => r.status === "absent" || r.status === "absent_justified"
+  ).length
+  const late = records.filter((r) => r.status === "late").length
+  const early_withdrawal = records.filter((r) => r.status === "early_withdrawal").length
 
-    const { data, error } = await query
-
-    if (error) throw new Error(`Error fetching dashboard stats: ${error.message}`)
-
-    const records = data ?? []
-    const present = records.filter((r) => r.status === "present").length
-    const absent = records.filter(
-      (r) => r.status === "absent" || r.status === "absent_justified"
-    ).length
-    const late = records.filter((r) => r.status === "late").length
-    const early_withdrawal = records.filter((r) => r.status === "early_withdrawal").length
-
-    return {
-      present,
-      absent,
-      late,
-      early_withdrawal,
-      total: records.length,
-    }
-  }
-
-  static async getBirthdays(supabase: SupabaseClient, schoolId: string): Promise<Student[]> {
-    const today = new Date()
-    const month = today.getMonth() + 1
-    const day = today.getDate()
-
-    const { data, error } = await supabase
-      .from("students")
-      .select("*")
-      .eq("school_id", schoolId)
-      .eq("status", "active")
-
-    if (error) throw new Error(`Error fetching birthdays: ${error.message}`)
-
-    const birthdays = (data ?? []).filter((student) => {
-      if (!student.birth_date) return false
-      const bd = new Date(student.birth_date)
-      return bd.getMonth() + 1 === month && bd.getDate() === day
-    })
-
-    return birthdays
-  }
-
-  static async getAlerts(supabase: SupabaseClient, schoolId: string): Promise<Alert[]> {
-    const { data, error } = await supabase
-      .from("alerts")
-      .select("*")
-      .eq("school_id", schoolId)
-      .eq("read", false)
-      .order("created_at", { ascending: false })
-      .limit(50)
-
-    if (error) throw new Error(`Error fetching alerts: ${error.message}`)
-    return data ?? []
-  }
-
-  static async getUpcomingEvents(
-    supabase: SupabaseClient,
-    schoolId: string,
-    limit: number = 5
-  ): Promise<CalendarEvent[]> {
-    const { data, error } = await supabase
-      .from("calendar_events")
-      .select("*")
-      .eq("school_id", schoolId)
-      .gte("start_date", format(new Date(), "yyyy-MM-dd"))
-      .order("start_date", { ascending: true })
-      .limit(limit)
-
-    if (error) throw new Error(`Error fetching upcoming events: ${error.message}`)
-    return data ?? []
-  }
-
-  static async getNearFailing(
-    supabase: SupabaseClient,
-    schoolId: string
-  ): Promise<(Student & { absenceCount: number; attendancePercentage: number })[]> {
-    const { data, error } = await supabase
-      .from("students")
-      .select("*, attendance!inner(status)")
-      .eq("school_id", schoolId)
-      .eq("status", "active")
-
-    if (error) throw new Error(`Error fetching students for failing check: ${error.message}`)
-
-    const result = (data ?? [])
-      .map((student) => {
-        const attendanceRecords = student.attendance as { status: string }[]
-        const total = attendanceRecords.length
-        const absent = attendanceRecords.filter(
-          (a) => a.status === "absent" || a.status === "absent_justified"
-        ).length
-        const percentage = total > 0 ? Math.round(((total - absent) / total) * 100) : 100
-
-        return {
-          ...student,
-          absenceCount: absent,
-          attendancePercentage: percentage,
-        }
-      })
-      .filter((s) => s.attendancePercentage < 75)
-      .sort((a, b) => a.attendancePercentage - b.attendancePercentage)
-      .slice(0, 20)
-
-    return result
-  }
+  return { present, absent, late, early_withdrawal, total: records.length }
 }
 
-export const dashboardService = {
-  async getStats(schoolId: string, divisionId?: string) {
-    const supabase = createClient()
-    return DashboardService.getStats(supabase, schoolId, divisionId)
-  },
-  async getBirthdays(schoolId: string) {
-    const supabase = createClient()
-    return DashboardService.getBirthdays(supabase, schoolId)
-  },
-  async getAlerts(schoolId: string) {
-    const supabase = createClient()
-    return DashboardService.getAlerts(supabase, schoolId)
-  },
-  async getUpcomingEvents(schoolId: string) {
-    const supabase = createClient()
-    return DashboardService.getUpcomingEvents(supabase, schoolId)
-  },
-  async getNearFailingStudents(schoolId: string) {
-    const supabase = createClient()
-    return DashboardService.getNearFailing(supabase, schoolId)
-  },
+export async function getBirthdays(schoolId: string): Promise<Student[]> {
+  const today = new Date()
+  const month = today.getMonth() + 1
+  const day = today.getDate()
+
+  const allStudents = await db.query.students.findMany({
+    where: and(eq(students.schoolId, schoolId), eq(students.status, "active")),
+  })
+
+  return (allStudents as Student[]).filter((student) => {
+    if (!student.birthDate) return false
+    const bd = new Date(student.birthDate)
+    return bd.getMonth() + 1 === month && bd.getDate() === day
+  })
+}
+
+export async function getAlerts(schoolId: string): Promise<Alert[]> {
+  return db.query.alerts.findMany({
+    where: and(eq(alerts.schoolId, schoolId), eq(alerts.read, false)),
+    orderBy: (t, { desc: d }) => [d(t.createdAt)],
+    limit: 50,
+  }) as Promise<Alert[]>
+}
+
+export async function getUpcomingEvents(
+  schoolId: string,
+  limit: number = 5
+): Promise<CalendarEvent[]> {
+  return db.query.calendarEvents.findMany({
+    where: and(
+      eq(calendarEvents.schoolId, schoolId),
+      gte(calendarEvents.startDate, new Date())
+    ),
+    orderBy: (t, { asc }) => [asc(t.startDate)],
+    limit,
+  }) as Promise<CalendarEvent[]>
+}
+
+export async function getNearFailing(schoolId: string) {
+  const activeStudents = await db.query.students.findMany({
+    where: and(eq(students.schoolId, schoolId), eq(students.status, "active")),
+    with: {
+      attendance: true,
+    },
+  })
+
+  const result = (activeStudents as Array<Student & { attendance: Array<{ status: string }> }>)
+    .map((student) => {
+      const total = student.attendance.length
+      const absent = student.attendance.filter(
+        (a) => a.status === "absent" || a.status === "absent_justified"
+      ).length
+      const percentage = total > 0 ? Math.round(((total - absent) / total) * 100) : 100
+
+      return {
+        ...student,
+        absenceCount: absent,
+        attendancePercentage: percentage,
+      }
+    })
+    .filter((s) => s.attendancePercentage < 75)
+    .sort((a, b) => a.attendancePercentage - b.attendancePercentage)
+    .slice(0, 20)
+
+  return result
 }

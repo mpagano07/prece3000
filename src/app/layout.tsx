@@ -4,6 +4,7 @@ import "./globals.css"
 import { RootProviders } from "@/components/shared/root-providers"
 import { ServiceWorkerRegister } from "@/components/shared/service-worker-register"
 import { NetworkStatus } from "@/components/shared/network-status"
+import { ThemeInit } from "@/components/shared/theme-init"
 
 const inter = Inter({
   variable: "--font-sans",
@@ -42,11 +43,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="dark")document.documentElement.classList.add("dark");else if(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches)document.documentElement.classList.add("dark")}catch(e){}try{window.__deferredInstallPrompt=null;window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__deferredInstallPrompt=e});window.addEventListener("appinstalled",function(){window.__deferredInstallPrompt=null})}catch(e){}})()`,
-          }}
-        />
+        <ThemeInit />
         <RootProviders>
           {children}
           <ServiceWorkerRegister />

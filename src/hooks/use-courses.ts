@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { courseService } from "@/services/courses"
+import { getCoursesBySchool, getDivisions as getDivisionsByCourse, createCourse, updateDivision, createDivision } from "@/services/courses"
 import { useAuth } from "@/contexts/auth-context"
 import type { Course, Division } from "@/types/database"
 
@@ -9,7 +9,7 @@ export function useCourses(academicYearId?: string) {
 
   return useQuery({
     queryKey: ["courses", school?.id, academicYearId],
-    queryFn: () => courseService.getAll(academicYearId),
+    queryFn: () => getCoursesBySchool(school!.id, academicYearId),
     enabled: !!school?.id,
   })
 }
@@ -19,7 +19,7 @@ export function useDivisions(courseId: string) {
 
   return useQuery({
     queryKey: ["courses", school?.id, courseId, "divisions"],
-    queryFn: () => courseService.getDivisions(courseId),
+    queryFn: () => getDivisionsByCourse(courseId),
     enabled: !!school?.id && !!courseId,
   })
 }
@@ -29,7 +29,7 @@ export function useCreateCourse() {
   const { school } = useAuth()
 
   return useMutation({
-    mutationFn: (data: Omit<Course, "id">) => courseService.create(data),
+    mutationFn: (data: Omit<Course, "id">) => createCourse({ schoolId: data.schoolId, name: data.name, academicYearId: data.academicYearId }),
     onSuccess: () => {
       toast.success("Curso creado correctamente")
       queryClient.invalidateQueries({ queryKey: ["courses", school?.id] })
@@ -52,8 +52,8 @@ export function useUpdateDivision() {
       data,
     }: {
       id: string
-      data: Partial<Pick<Division, "name" | "shift" | "preceptor_id">>
-    }) => courseService.updateDivision(id, data),
+      data: Partial<Pick<Division, "name" | "shift" | "preceptorId">>
+    }) => updateDivision(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["courses", school?.id] })
     },
@@ -70,8 +70,8 @@ export function useCreateDivision() {
   const { school } = useAuth()
 
   return useMutation({
-    mutationFn: (data: Parameters<typeof courseService.createDivision>[0]) =>
-      courseService.createDivision(data),
+    mutationFn: (data: Parameters<typeof createDivision>[0]) =>
+      createDivision(data),
     onSuccess: () => {
       toast.success("División creada correctamente")
       queryClient.invalidateQueries({ queryKey: ["courses", school?.id] })

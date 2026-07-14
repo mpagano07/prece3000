@@ -1,44 +1,31 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { profiles } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
+import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
     const { user_id } = await request.json()
 
     if (!user_id) {
-      return NextResponse.json(
-        { error: "user_id es requerido" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "user_id es requerido" }, { status: 400 })
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json(
-        { error: "No autenticado" },
-        { status: 401 }
-      )
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
+      return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
-
-    const { error } = await adminClient.auth.admin.updateUserById(user_id, {
-      ban_duration: "24h",
+    await auth.api.banUser({
+      body: { userId: user_id, banReason: "Deactivated by admin" },
     })
 
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      )
-    }
-
-    await adminClient
-      .from("profiles")
-      .update({ school_id: null, deactivated_at: new Date().toISOString() })
-      .eq("id", user_id)
+    await db
+      .update(profiles)
+      .set({ schoolId: null, deactivatedAt: new Date() })
+      .where(eq(profiles.id, user_id))
 
     return NextResponse.json({ success: true })
   } catch (err) {

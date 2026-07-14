@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { profiles, preceptorSchools, teacherSchools } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
+import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
@@ -16,91 +19,61 @@ export async function POST(request: Request) {
 
     const validRoles = ["school_admin", "director", "preceptor", "secretary", "teacher"]
     if (!validRoles.includes(role)) {
-      return NextResponse.json(
-        { error: "Rol inválido" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Rol inválido" }, { status: 400 })
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json(
-        { error: "No autenticado" },
-        { status: 401 }
-      )
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
+      return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
-
-    const { data: authUser, error: createError } =
-      await adminClient.auth.admin.createUser({
+    const authUser = await auth.api.createUser({
+      body: {
         email,
         password,
-        email_confirm: true,
-        user_metadata: { first_name, last_name, role },
-      })
-
-    if (createError) {
-      return NextResponse.json(
-        { error: createError.message },
-        { status: 400 }
-      )
-    }
+        name: `${first_name} ${last_name}`,
+      },
+    })
 
     const primarySchoolId = school_ids[0]
 
-    const { error: profileError } = await adminClient
-      .from("profiles")
-      .update({
-        first_name,
-        last_name,
-        role,
-        school_id: primarySchoolId,
+    await db
+      .insert(profiles)
+      .values({
+        id: authUser.user.id as any,
+        firstName: first_name,
+        lastName: last_name,
+        email,
+        role: role as "super_admin" | "school_admin" | "director" | "preceptor" | "secretary" | "teacher",
+        schoolId: primarySchoolId,
       })
-      .eq("id", authUser.user.id)
+      .onConflictDoUpdate({
+        target: profiles.id,
+        set: {
+          firstName: first_name,
+          lastName: last_name,
+          email,
+          role: role as "super_admin" | "school_admin" | "director" | "preceptor" | "secretary" | "teacher",
+          schoolId: primarySchoolId,
+        },
+      })
 
-    if (profileError) {
-      return NextResponse.json(
-        { error: `Error al actualizar perfil: ${profileError.message}` },
-        { status: 500 }
+    if (role === "preceptor") {
+      await db.insert(preceptorSchools).values(
+        school_ids.map((sid: string) => ({
+          preceptorId: authUser.user.id,
+          schoolId: sid,
+        }))
       )
     }
 
-    if (role === "preceptor") {
-      const { error: psError } = await adminClient
-        .from("preceptor_schools")
-        .insert(
-          school_ids.map((sid: string) => ({
-            preceptor_id: authUser.user.id,
-            school_id: sid,
-          }))
-        )
-
-      if (psError) {
-        return NextResponse.json(
-          { error: `Error al asignar escuelas: ${psError.message}` },
-          { status: 500 }
-        )
-      }
-    }
-
     if (role === "teacher") {
-      const { error: tsError } = await adminClient
-        .from("teacher_schools")
-        .insert(
-          school_ids.map((sid: string) => ({
-            teacher_id: authUser.user.id,
-            school_id: sid,
-          }))
-        )
-
-      if (tsError) {
-        return NextResponse.json(
-          { error: `Error al asignar escuelas: ${tsError.message}` },
-          { status: 500 }
-        )
-      }
+      await db.insert(teacherSchools).values(
+        school_ids.map((sid: string) => ({
+          teacherId: authUser.user.id,
+          schoolId: sid,
+        }))
+      )
     }
 
     return NextResponse.json({ success: true, user: authUser.user })

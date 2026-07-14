@@ -40,8 +40,7 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { LoadingScreen } from "@/components/shared/loading-screen"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { useAuth } from "@/contexts/auth-context"
-import { TeacherService, type TeacherWithSchoolStatus } from "@/services/teachers"
-import { createClient } from "@/lib/supabase/client"
+import { getTeachersBySchool, deactivateTeacher, reactivateTeacher, updateTeacher, type TeacherWithSchoolStatus } from "@/services/teachers"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { getInitials, cn } from "@/lib/utils"
@@ -56,9 +55,8 @@ function useTeachers() {
   return useQuery({
     queryKey: ["teachers", school?.id],
     queryFn: async () => {
-      const supabase = createClient()
       if (!school?.id) throw new Error("No se encontró la institución asociada")
-      return TeacherService.getBySchool(supabase, school.id)
+      return getTeachersBySchool(school.id)
     },
     enabled: !!school?.id,
   })
@@ -76,30 +74,30 @@ export default function TeachersPage() {
   const [addExistingOpen, setAddExistingOpen] = useState(false)
 
   const { data: empScheduleData } = useQuery({
-    queryKey: ["teacher-schedules", profile?.school_id],
+    queryKey: ["teacher-schedules", profile?.schoolId],
     queryFn: async () => {
-      const res = await fetch(`/api/employee-schedules?school_id=${profile?.school_id}`)
+      const res = await fetch(`/api/employee-schedules?school_id=${profile?.schoolId}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      return data.schedules as Record<string, Record<string, { time_start: string; time_end: string }[]>> ?? {}
+      return data.schedules as Record<string, Record<string, { timeStart: string; timeEnd: string }[]>> ?? {}
     },
-    enabled: !!profile?.school_id,
+    enabled: !!profile?.schoolId,
   })
 
   const { data: divScheduleData } = useQuery({
-    queryKey: ["teacher-division-schedules", profile?.school_id],
+    queryKey: ["teacher-division-schedules", profile?.schoolId],
     queryFn: async () => {
-      const res = await fetch(`/api/division-schedules?school_id=${profile?.school_id}`)
+      const res = await fetch(`/api/division-schedules?school_id=${profile?.schoolId}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      type Row = { teacher_id: string; day_of_week: number; time_start: string; time_end: string; subject?: { name: string } }
+      type Row = { teacherId: string; dayOfWeek: number; timeStart: string; timeEnd: string; subject?: { name: string } }
       return (data.schedules ?? []) as Row[]
     },
-    enabled: !!profile?.school_id,
+    enabled: !!profile?.schoolId,
   })
 
   const teacherSchedules = useMemo(() => {
-    const map = new Map<string, Record<number, { time_start: string; time_end: string; subject?: string }[]>>()
+    const map = new Map<string, Record<number, { timeStart: string; timeEnd: string; subject?: string }[]>>()
 
     for (const [empId, days] of Object.entries(empScheduleData ?? {})) {
       for (const [dayStr, slots] of Object.entries(days)) {
@@ -107,18 +105,18 @@ export default function TeachersPage() {
         if (!map.has(empId)) map.set(empId, {})
         if (!map.get(empId)![day]) map.get(empId)![day] = []
         for (const slot of slots) {
-          map.get(empId)![day].push({ time_start: slot.time_start, time_end: slot.time_end })
+          map.get(empId)![day].push({ timeStart: slot.timeStart, timeEnd: slot.timeEnd })
         }
       }
     }
 
     for (const row of divScheduleData ?? []) {
-      const day = row.day_of_week
-      if (!map.has(row.teacher_id)) map.set(row.teacher_id, {})
-      if (!map.get(row.teacher_id)![day]) map.get(row.teacher_id)![day] = []
-      map.get(row.teacher_id)![day].push({
-        time_start: row.time_start.slice(0, 5),
-        time_end: row.time_end.slice(0, 5),
+      const day = row.dayOfWeek
+      if (!map.has(row.teacherId)) map.set(row.teacherId, {})
+      if (!map.get(row.teacherId)![day]) map.get(row.teacherId)![day] = []
+      map.get(row.teacherId)![day].push({
+        timeStart: row.timeStart.slice(0, 5),
+        timeEnd: row.timeEnd.slice(0, 5),
         subject: row.subject?.name,
       })
     }
@@ -128,8 +126,7 @@ export default function TeachersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const supabase = createClient()
-      return TeacherService.delete(supabase, id, school?.id)
+      return deactivateTeacher(id, school?.id)
     },
     onSuccess: () => {
       toast.success("Docente desactivado correctamente")
@@ -143,8 +140,7 @@ export default function TeachersPage() {
 
   const reactivateMutation = useMutation({
     mutationFn: async (id: string) => {
-      const supabase = createClient()
-      return TeacherService.reactivate(supabase, id, school?.id)
+      return reactivateTeacher(id, school?.id)
     },
     onSuccess: () => {
       toast.success("Docente reactivado correctamente")
@@ -220,7 +216,7 @@ export default function TeachersPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {teachers?.map((teacher) => {
-            const isDeactivated = !!(teacher as TeacherWithSchoolStatus).school_deactivated_at
+            const isDeactivated = !!(teacher as TeacherWithSchoolStatus).schoolDeactivatedAt
             return (
             <Card key={teacher.id} className={cn(isDeactivated && "opacity-60")}>
               <CardHeader>
@@ -228,12 +224,12 @@ export default function TeachersPage() {
                   <div className="flex items-center gap-3">
                     <Avatar>
                       <AvatarFallback>
-                        {getInitials(teacher.first_name, teacher.last_name)}
+                        {getInitials(teacher.firstName, teacher.lastName)}
                       </AvatarFallback>
                     </Avatar>
                     <div>
                       <CardTitle className="text-sm">
-                        {teacher.first_name} {teacher.last_name}
+                        {teacher.firstName} {teacher.lastName}
                       </CardTitle>
                       <CardDescription className="text-xs">
                         {teacher.email}
@@ -272,7 +268,7 @@ export default function TeachersPage() {
                               {slots.map((slot, i) => (
                                 <p key={i} className="text-[9px] text-muted-foreground whitespace-nowrap">
                                   {slot.subject ? <span className="font-medium">{slot.subject} </span> : null}
-                                  {slot.time_start}–{slot.time_end}
+                                  {slot.timeStart}–{slot.timeEnd}
                                 </p>
                               ))}
                             </div>
@@ -375,8 +371,8 @@ function AddExistingTeacherDialog({
   const [searching, setSearching] = useState(false)
   const [foundTeacher, setFoundTeacher] = useState<{
     id: string
-    first_name: string
-    last_name: string
+    firstName: string
+    lastName: string
     email: string
   } | null>(null)
   const [error, setError] = useState("")
@@ -481,12 +477,12 @@ function AddExistingTeacherDialog({
             <div className="flex items-center gap-3">
               <Avatar>
                 <AvatarFallback>
-                  {getInitials(foundTeacher.first_name, foundTeacher.last_name)}
+                  {getInitials(foundTeacher.firstName, foundTeacher.lastName)}
                 </AvatarFallback>
               </Avatar>
               <div>
                 <p className="text-sm font-medium">
-                  {foundTeacher.first_name} {foundTeacher.last_name}
+                  {foundTeacher.firstName} {foundTeacher.lastName}
                 </p>
                 <p className="text-xs text-muted-foreground">{foundTeacher.email}</p>
               </div>
@@ -517,8 +513,8 @@ function TeacherForm({
 }) {
   const { school } = useAuth()
   const queryClient = useQueryClient()
-  const [firstName, setFirstName] = useState(teacher?.first_name || "")
-  const [lastName, setLastName] = useState(teacher?.last_name || "")
+  const [firstName, setFirstName] = useState(teacher?.firstName || "")
+  const [lastName, setLastName] = useState(teacher?.lastName || "")
   const [email, setEmail] = useState(teacher?.email || "")
   const [phone, setPhone] = useState(teacher?.phone || "")
   const [password, setPassword] = useState("")
@@ -534,14 +530,14 @@ function TeacherForm({
       const empRes = await fetch(`/api/employee-schedules?school_id=${school.id}`)
       const empData = await empRes.json()
       if (!empRes.ok) throw new Error(empData.error)
-      const empDays = (empData.schedules ?? {})[teacher.id] as Record<string, { time_start: string; time_end: string }[]> | undefined
+      const empDays = (empData.schedules ?? {})[teacher.id] as Record<string, { timeStart: string; timeEnd: string }[]> | undefined
 
       const seenDays = new Set<number>()
       const slots: ScheduleSlot[] = []
 
       for (const [dayStr, timeSlots] of Object.entries(empDays ?? {})) {
         for (const ts of timeSlots) {
-          slots.push({ day_of_week: Number(dayStr), time_start: ts.time_start, time_end: ts.time_end })
+          slots.push({ dayOfWeek: Number(dayStr), timeStart: ts.timeStart, timeEnd: ts.timeEnd })
           seenDays.add(Number(dayStr))
         }
       }
@@ -551,19 +547,19 @@ function TeacherForm({
       if (divRes.ok) {
         const divData = await divRes.json()
         for (const s of divData.schedules ?? []) {
-          if (s.teacher_id !== teacher.id) continue
-          if (!seenDays.has(s.day_of_week)) {
+          if (s.teacherId !== teacher.id) continue
+          if (!seenDays.has(s.dayOfWeek)) {
             slots.push({
-              day_of_week: s.day_of_week,
-              time_start: s.time_start.slice(0, 5),
-              time_end: s.time_end.slice(0, 5),
+              dayOfWeek: s.dayOfWeek,
+              timeStart: s.timeStart.slice(0, 5),
+              timeEnd: s.timeEnd.slice(0, 5),
             })
-            seenDays.add(s.day_of_week)
+            seenDays.add(s.dayOfWeek)
           }
         }
       }
 
-      slots.sort((a, b) => a.day_of_week - b.day_of_week || a.time_start.localeCompare(b.time_start))
+      slots.sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.timeStart.localeCompare(b.timeStart))
       return slots
     },
     enabled: !!teacher && !!school?.id,
@@ -576,13 +572,13 @@ function TeacherForm({
   }, [existingSchedule])
 
   const saveSchedule = async (employeeId: string) => {
-    const days: Record<string, { time_start: string; time_end: string }[]> = {}
+    const days: Record<string, { timeStart: string; timeEnd: string }[]> = {}
     for (const slot of scheduleSlots) {
-      const key = String(slot.day_of_week)
+      const key = String(slot.dayOfWeek)
       if (!days[key]) days[key] = []
-      days[key].push({ time_start: slot.time_start, time_end: slot.time_end })
+      days[key].push({ timeStart: slot.timeStart, timeEnd: slot.timeEnd })
     }
-    const payload: Record<string, Record<string, { time_start: string; time_end: string }[]>> = {
+    const payload: Record<string, Record<string, { timeStart: string; timeEnd: string }[]>> = {
       [employeeId]: days,
     }
     const res = await fetch("/api/employee-schedules", {
@@ -598,9 +594,8 @@ function TeacherForm({
     e.preventDefault()
     setSaving(true)
     try {
-      const supabase = createClient()
       if (teacher) {
-        await TeacherService.update(supabase, teacher.id, { first_name: firstName, last_name: lastName, email, phone })
+        await updateTeacher(teacher.id, { firstName, lastName, email, phone })
         await saveSchedule(teacher.id)
         toast.success("Docente actualizado correctamente")
         queryClient.invalidateQueries({ queryKey: ["teachers"] })
@@ -618,7 +613,7 @@ function TeacherForm({
             first_name: firstName,
             last_name: lastName,
             role: "teacher",
-            school_id: school.id,
+            school_ids: [school.id],
           }),
         })
         const data = await res.json()

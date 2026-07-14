@@ -31,8 +31,8 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs"
-import { createClient } from "@/lib/supabase/client"
-import { StudentService } from "@/services/students"
+import { getGuardians, getAuthorizedPersons } from "@/services/students"
+import { getDivisions } from "@/services/courses"
 import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft,
@@ -141,17 +141,15 @@ export default function EditStudentPage({ params }: PageProps) {
     },
   })
 
-  const supabase = createClient()
-
   const { data: existingGuardians } = useQuery({
     queryKey: ["student-guardians", id],
-    queryFn: () => StudentService.getGuardians(supabase, id),
+    queryFn: () => getGuardians(id),
     enabled: !!id,
   })
 
   const { data: existingAuthorized } = useQuery({
     queryKey: ["student-authorized", id],
-    queryFn: () => StudentService.getAuthorizedPersons(supabase, id),
+    queryFn: () => getAuthorizedPersons(id),
     enabled: !!id,
   })
 
@@ -170,25 +168,25 @@ export default function EditStudentPage({ params }: PageProps) {
   useEffect(() => {
     if (student && existingGuardians && existingAuthorized) {
       reset({
-        first_name: student.first_name ?? "",
-        last_name: student.last_name ?? "",
+        first_name: student.firstName ?? "",
+        last_name: student.lastName ?? "",
         dni: student.dni ?? "",
-        birth_date: student.birth_date ?? "",
+        birth_date: student.birthDate ?? "",
         gender: student.gender ?? "",
         nationality: student.nationality ?? "",
         address: student.address ?? "",
         phone: student.phone ?? "",
         email: student.email ?? "",
-        blood_type: student.blood_type ?? "",
-        health_insurance: student.health_insurance ?? "",
-        health_affiliate_number: student.health_affiliate_number ?? "",
-        doctor_name: student.doctor_name ?? "",
-        doctor_phone: student.doctor_phone ?? "",
+        blood_type: student.bloodType ?? "",
+        health_insurance: student.healthInsurance ?? "",
+        health_affiliate_number: student.healthAffiliateNumber ?? "",
+        doctor_name: student.doctorName ?? "",
+        doctor_phone: student.doctorPhone ?? "",
         allergies: student.allergies ?? "",
         medication: student.medication ?? "",
         restrictions: student.restrictions ?? "",
-        division_id: student.division_id ?? "",
-        academic_year_id: student.academic_year_id ?? "",
+        division_id: student.divisionId ?? "",
+        academic_year_id: student.academicYearId ?? "",
         guardians: existingGuardians.map((g) => ({
           name: g.name,
           phone: g.phone ?? "",
@@ -213,9 +211,8 @@ export default function EditStudentPage({ params }: PageProps) {
     }
     setLoadingDivisions(true)
     try {
-      const { courseService } = await import("@/services/courses")
-      const result = await courseService.getDivisions(v)
-      const matching = result.find((d) => d.id === student?.division_id)
+      const result = await getDivisions(v)
+      const matching = result.find((d) => d.id === student?.divisionId)
       if (matching) {
         setValue("division_id", matching.id)
       } else {
@@ -231,27 +228,27 @@ export default function EditStudentPage({ params }: PageProps) {
 
   const onSubmit = async (formData: StudentFormValues) => {
     const payload: Record<string, unknown> = {
-      first_name: formData.first_name,
-      last_name: formData.last_name,
+      firstName: formData.first_name,
+      lastName: formData.last_name,
       dni: formData.dni,
-      birth_date: formData.birth_date || null,
+      birthDate: formData.birth_date || null,
       gender: formData.gender || null,
       nationality: formData.nationality || null,
       address: formData.address || null,
       phone: formData.phone || null,
       email: formData.email || null,
-      blood_type: formData.blood_type || null,
-      health_insurance: formData.health_insurance || null,
-      health_affiliate_number: formData.health_affiliate_number || null,
-      doctor_name: formData.doctor_name || null,
-      doctor_phone: formData.doctor_phone || null,
+      bloodType: formData.blood_type || null,
+      healthInsurance: formData.health_insurance || null,
+      healthAffiliateNumber: formData.health_affiliate_number || null,
+      doctorName: formData.doctor_name || null,
+      doctorPhone: formData.doctor_phone || null,
       allergies: formData.allergies || null,
       medication: formData.medication || null,
       restrictions: formData.restrictions || null,
-      division_id: formData.division_id || null,
-      academic_year_id: formData.academic_year_id || null,
+      divisionId: formData.division_id || null,
+      academicYearId: formData.academic_year_id || null,
       guardians: formData.guardians.filter((g) => g.name),
-      authorized_persons: formData.authorized_persons.filter((p) => p.name),
+      authorizedPersons: formData.authorized_persons.filter((p) => p.name),
     }
 
     updateStudent.mutate(
@@ -288,7 +285,7 @@ export default function EditStudentPage({ params }: PageProps) {
     <div className="space-y-6">
       <PageHeader
         title="Editar Alumno"
-        description={`Editando datos de ${student.last_name}, ${student.first_name}`}
+        description={`Editando datos de ${student.lastName}, ${student.firstName}`}
       >
         <Button variant="outline" onClick={() => router.back()}>
           <ArrowLeft className="size-4" />

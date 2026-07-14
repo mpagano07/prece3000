@@ -54,17 +54,17 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
           }
         >
           <Avatar size="sm">
-            <AvatarImage src={profile?.avatar_url ?? undefined} />
+            <AvatarImage src={profile?.avatarUrl ?? undefined} />
             <AvatarFallback>
-              {profile?.first_name?.charAt(0) ?? "U"}
-              {profile?.last_name?.charAt(0) ?? ""}
+              {profile?.firstName?.charAt(0) ?? "U"}
+              {profile?.lastName?.charAt(0) ?? ""}
             </AvatarFallback>
           </Avatar>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={8} className="min-w-56">
           <div className="px-2 py-1.5">
             <p className="text-sm font-medium">
-              {profile?.first_name} {profile?.last_name}
+              {profile?.firstName} {profile?.lastName}
             </p>
             <p className="truncate text-xs text-muted-foreground">{profile?.email}</p>
           </div>

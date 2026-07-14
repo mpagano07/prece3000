@@ -159,16 +159,16 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-center gap-2">
                       <Avatar size="sm">
-                        {student.photo_url && (
-                          <AvatarImage src={student.photo_url} />
+                        {student.photoUrl && (
+                          <AvatarImage src={student.photoUrl} />
                         )}
                         <AvatarFallback>
-                          {getInitials(student.first_name, student.last_name)}
+                          {getInitials(student.firstName, student.lastName)}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <p className="text-sm font-medium">
-                          {student.last_name}, {student.first_name}
+                          {student.lastName}, {student.firstName}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {student.absenceCount} inasistencias
@@ -212,19 +212,19 @@ export default function DashboardPage() {
                     className="flex items-center gap-3"
                   >
                     <Avatar size="sm">
-                      {student.photo_url && (
-                        <AvatarImage src={student.photo_url} />
+                      {student.photoUrl && (
+                        <AvatarImage src={student.photoUrl} />
                       )}
                       <AvatarFallback>
-                        {getInitials(student.first_name, student.last_name)}
+                        {getInitials(student.firstName, student.lastName)}
                       </AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="text-sm font-medium">
-                        {student.first_name} {student.last_name}
+                        {student.firstName} {student.lastName}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {student.division_id ?? "Sin división"}
+                        {student.divisionId ?? "Sin división"}
                       </p>
                     </div>
                   </div>
@@ -260,7 +260,7 @@ export default function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm">{alert.message}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatDate(alert.created_at)}
+                        {alert.createdAt ? formatDate(alert.createdAt) : ""}
                       </p>
                     </div>
                   </div>
@@ -289,10 +289,10 @@ export default function DashboardPage() {
                   <div key={event.id} className="flex items-start gap-3">
                     <div className="flex min-w-10 flex-col items-center rounded-lg border bg-muted/50 p-1.5">
                       <span className="text-xs font-bold">
-                        {new Date(event.start_date).getDate()}
+                        {new Date(event.startDate).getDate()}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
-                        {new Date(event.start_date).toLocaleString("es-AR", {
+                        {new Date(event.startDate).toLocaleString("es-AR", {
                           month: "short",
                         })}
                       </span>

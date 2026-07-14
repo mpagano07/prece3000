@@ -94,12 +94,12 @@ export default function SearchPage() {
               >
                 <Avatar>
                   <AvatarFallback>
-                    {getInitials(student.first_name, student.last_name)}
+                    {getInitials(student.firstName, student.lastName)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">
-                    {student.first_name} {student.last_name}
+                    {student.firstName} {student.lastName}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     DNI: {student.dni}

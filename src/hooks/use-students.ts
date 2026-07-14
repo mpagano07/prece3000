@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useState, useEffect } from "react"
-import { studentService } from "@/services/students"
+import { getAllStudents, getStudentPage, getStudentById, createStudent, updateStudent, getStudentHistory, searchStudents } from "@/services/students"
 import { useAuth } from "@/contexts/auth-context"
 import type { Student } from "@/types/database"
 
@@ -10,7 +10,7 @@ export function useStudents(divisionId?: string) {
 
   return useQuery({
     queryKey: ["students", school?.id, divisionId],
-    queryFn: () => studentService.getAll(divisionId),
+    queryFn: () => getAllStudents(school!.id, divisionId),
     enabled: !!school?.id,
   })
 }
@@ -24,7 +24,7 @@ export function useStudentsPaginated(
 
   return useQuery({
     queryKey: ["students", school?.id, "page", page, pageSize, filters],
-    queryFn: () => studentService.getPage(page, pageSize, filters),
+    queryFn: () => getStudentPage(school!.id, page, pageSize, filters),
     enabled: !!school?.id,
   })
 }
@@ -34,7 +34,7 @@ export function useStudent(id: string) {
 
   return useQuery({
     queryKey: ["students", school?.id, id],
-    queryFn: () => studentService.getById(id),
+    queryFn: () => getStudentById(id),
     enabled: !!school?.id && !!id,
   })
 }
@@ -44,8 +44,8 @@ export function useCreateStudent() {
   const { school } = useAuth()
 
   return useMutation({
-    mutationFn: (data: Omit<Student, "id" | "created_at" | "updated_at">) =>
-      studentService.create(data),
+    mutationFn: (data: Omit<Student, "id" | "createdAt" | "updatedAt">) =>
+      createStudent(data as any),
     onSuccess: () => {
       toast.success("Estudiante creado correctamente")
       queryClient.invalidateQueries({ queryKey: ["students", school?.id] })
@@ -64,7 +64,7 @@ export function useUpdateStudent() {
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<Student> }) =>
-      studentService.update(id, data),
+      updateStudent(id, data as any),
     onSuccess: () => {
       toast.success("Estudiante actualizado correctamente")
       queryClient.invalidateQueries({ queryKey: ["students", school?.id] })
@@ -82,7 +82,7 @@ export function useStudentHistory(studentId: string) {
 
   return useQuery({
     queryKey: ["students", school?.id, studentId, "history"],
-    queryFn: () => studentService.getHistory(studentId),
+    queryFn: () => getStudentHistory(studentId),
     enabled: !!school?.id && !!studentId,
   })
 }
@@ -98,7 +98,7 @@ export function useStudentSearch(query: string) {
 
   return useQuery({
     queryKey: ["students", school?.id, "search", debouncedQuery],
-    queryFn: () => studentService.search(debouncedQuery),
+    queryFn: () => searchStudents(school!.id, debouncedQuery),
     enabled: !!school?.id && debouncedQuery.length > 0,
   })
 }

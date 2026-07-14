@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { preceptorBookService } from "@/services/book"
+import { getAllBookEntries, createBookEntry, getStudentBookEntries } from "@/services/book"
 import { useAuth } from "@/contexts/auth-context"
 import type { PreceptorBookEntry, BookEntryType } from "@/types/database"
 
@@ -16,22 +16,22 @@ export function useBookEntries(
 
   return useQuery({
     queryKey: ["book", school?.id, filters],
-    queryFn: () => preceptorBookService.getEntries(filters),
+    queryFn: () => getAllBookEntries(school!.id, filters),
     enabled: !!school?.id,
   })
 }
 
 export function useCreateBookEntry() {
   const queryClient = useQueryClient()
-  const { school } = useAuth()
+  const { school, profile } = useAuth()
 
   return useMutation({
     mutationFn: (
       data: Omit<
         PreceptorBookEntry,
-        "id" | "created_at" | "created_by"
+        "id" | "createdAt" | "createdBy"
       >
-    ) => preceptorBookService.createEntry(data),
+    ) => createBookEntry(school!.id, { type: data.type, title: data.title, description: data.description, studentId: data.studentId ?? undefined }, profile!.id),
     onSuccess: () => {
       toast.success("Registro creado correctamente")
       queryClient.invalidateQueries({ queryKey: ["book", school?.id] })
@@ -49,7 +49,7 @@ export function useStudentBookEntries(studentId: string) {
 
   return useQuery({
     queryKey: ["book", school?.id, "student", studentId],
-    queryFn: () => preceptorBookService.getStudentEntries(studentId),
+    queryFn: () => getStudentBookEntries(studentId),
     enabled: !!school?.id && !!studentId,
   })
 }

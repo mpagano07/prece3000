@@ -59,6 +59,7 @@ import type {
   StudentGuardian,
   AuthorizedPerson,
 } from "@/types/database"
+import { getGuardians, getAuthorizedPersons } from "@/services/students"
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -74,28 +75,14 @@ export default function StudentDetailPage({ params }: PageProps) {
   const { data: guardians } = useQuery({
     queryKey: ["students", school?.id, id, "guardians"],
     queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("student_guardians")
-        .select("*")
-        .eq("student_id", id)
-        .order("name")
-      if (error) throw error
-      return (data ?? []) as StudentGuardian[]
+      return getGuardians(id) as Promise<StudentGuardian[]>
     },
     enabled: !!id,
   })
   const { data: authorizedPersons } = useQuery({
     queryKey: ["students", school?.id, id, "authorized-persons"],
     queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("authorized_persons")
-        .select("*")
-        .eq("student_id", id)
-        .order("name")
-      if (error) throw error
-      return (data ?? []) as AuthorizedPerson[]
+      return getAuthorizedPersons(id) as Promise<AuthorizedPerson[]>
     },
     enabled: !!id,
   })
@@ -127,8 +114,8 @@ export default function StudentDetailPage({ params }: PageProps) {
   const genderLabel =
     SEX_OPTIONS.find((o) => o.value === student.gender)?.label ?? student.gender
   const bloodTypeLabel =
-    BLOOD_TYPE_OPTIONS.find((o) => o.value === student.blood_type)?.label ??
-    student.blood_type
+    BLOOD_TYPE_OPTIONS.find((o) => o.value === student.bloodType)?.label ??
+    student.bloodType
 
   const statusBadge: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
     active: "default",
@@ -160,21 +147,21 @@ export default function StudentDetailPage({ params }: PageProps) {
           <Card>
             <CardContent className="flex flex-col items-center gap-3 pt-6">
               <Avatar size="lg" className="size-24">
-                {student.photo_url && <AvatarImage src={student.photo_url} />}
+                {student.photoUrl && <AvatarImage src={student.photoUrl} />}
                 <AvatarFallback className="text-lg">
-                  {getInitials(student.first_name, student.last_name)}
+                  {getInitials(student.firstName, student.lastName)}
                 </AvatarFallback>
               </Avatar>
               <div className="text-center">
                 <h2 className="text-lg font-semibold">
-                  {student.last_name}, {student.first_name}
+                  {student.lastName}, {student.firstName}
                 </h2>
                 <p className="text-sm text-muted-foreground">{student.dni}</p>
                 <Badge
-                  variant={statusBadge[student.status] ?? "outline"}
+                  variant={statusBadge[student.status ?? ""] ?? "outline"}
                   className="mt-2"
                 >
-                  {statusLabel[student.status] ?? student.status}
+                  {statusLabel[student.status ?? ""] ?? student.status}
                 </Badge>
               </div>
               <div className="flex w-full flex-col gap-2 pt-2">
@@ -253,7 +240,7 @@ export default function StudentDetailPage({ params }: PageProps) {
                     <div>
                       <dt className="text-xs text-muted-foreground">Nombre</dt>
                       <dd className="text-sm font-medium">
-                        {student.first_name} {student.last_name}
+                        {student.firstName} {student.lastName}
                       </dd>
                     </div>
                     <div>
@@ -265,8 +252,8 @@ export default function StudentDetailPage({ params }: PageProps) {
                         Fecha de Nacimiento
                       </dt>
                       <dd className="text-sm font-medium">
-                        {student.birth_date
-                          ? formatDate(student.birth_date)
+                        {student.birthDate
+                          ? formatDate(student.birthDate)
                           : "-"}
                       </dd>
                     </div>
@@ -343,7 +330,7 @@ export default function StudentDetailPage({ params }: PageProps) {
                         Obra Social
                       </dt>
                       <dd className="text-sm font-medium">
-                        {student.health_insurance ?? "-"}
+                        {student.healthInsurance ?? "-"}
                       </dd>
                     </div>
                     <div>
@@ -351,7 +338,7 @@ export default function StudentDetailPage({ params }: PageProps) {
                         N° de Afiliado
                       </dt>
                       <dd className="text-sm font-medium">
-                        {student.health_affiliate_number ?? "-"}
+                        {student.healthAffiliateNumber ?? "-"}
                       </dd>
                     </div>
                     <div>
@@ -359,7 +346,7 @@ export default function StudentDetailPage({ params }: PageProps) {
                         Médico de Cabecera
                       </dt>
                       <dd className="text-sm font-medium">
-                        {student.doctor_name ?? "-"}
+                        {student.doctorName ?? "-"}
                       </dd>
                     </div>
                     <div>
@@ -367,7 +354,7 @@ export default function StudentDetailPage({ params }: PageProps) {
                         Tel. del Médico
                       </dt>
                       <dd className="text-sm font-medium">
-                        {student.doctor_phone ?? "-"}
+                        {student.doctorPhone ?? "-"}
                       </dd>
                     </div>
                   </dl>
@@ -584,7 +571,7 @@ export default function StudentDetailPage({ params }: PageProps) {
                                       </p>
                                     )}
                                     <p className="mt-1 text-xs text-muted-foreground">
-                                      {formatDateTime(entry.created_at)}
+                                      {entry.createdAt ? formatDateTime(entry.createdAt) : ""}
                                     </p>
                                   </div>
                                 )
@@ -628,8 +615,8 @@ export default function StudentDetailPage({ params }: PageProps) {
                                     {comm.message}
                                   </p>
                                   <p className="mt-1 text-xs text-muted-foreground">
-                                    {formatDateTime(comm.sent_at)} - Enviado a:{" "}
-                                    {comm.sent_to}
+                                    {formatDateTime(comm.sentAt)} - Enviado a:{" "}
+                                    {comm.sentTo}
                                   </p>
                                 </div>
                               ))}
@@ -658,7 +645,7 @@ export default function StudentDetailPage({ params }: PageProps) {
                                         {doc.name}
                                       </p>
                                       <p className="text-xs text-muted-foreground">
-                                        {formatDate(doc.uploaded_at)}
+                                        {doc.uploadedAt ? formatDate(doc.uploadedAt) : ""}
                                       </p>
                                     </div>
                                   </div>
@@ -667,13 +654,13 @@ export default function StudentDetailPage({ params }: PageProps) {
                                       variant="ghost"
                                       size="icon-sm"
                                       onClick={() =>
-                                        setPreviewDoc({ name: doc.name, url: doc.file_url })
+                                        setPreviewDoc({ name: doc.name, url: doc.fileUrl })
                                       }
                                     >
                                       <Eye className="size-4" />
                                     </Button>
                                     <a
-                                      href={doc.file_url}
+                                      href={doc.fileUrl}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       download

@@ -27,6 +27,8 @@ import {
   ClipboardCheck,
   GraduationCap,
 } from "lucide-react"
+import { getAttendanceWithStudents, getEmployeeAttendanceHistory } from "@/services/attendance"
+import { getGradesWithStudents } from "@/services/grades"
 
 const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
   present: "Presente",
@@ -70,33 +72,7 @@ const EMPLOYEE_STATUS_COLORS: Record<string, string> = {
 function StudentAttendanceHistory({ schoolId }: { schoolId?: string | null }) {
   const { data, isLoading } = useQuery({
     queryKey: ["history", "student-attendance", schoolId],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data: records, error } = await supabase
-        .from("attendance")
-        .select("*, students(first_name, last_name, dni), divisions(name)")
-        .eq("school_id", schoolId!)
-        .order("created_at", { ascending: false })
-        .limit(200)
-      if (error) throw error
-
-      const userIds = [
-        ...new Set((records ?? []).map((r) => r.created_by).filter(Boolean)),
-      ]
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, first_name, last_name")
-        .in("id", userIds)
-
-      const profileMap = new Map(
-        (profiles ?? []).map((p) => [p.id, p])
-      )
-
-      return (records ?? []).map((r) => ({
-        ...r,
-        creator: profileMap.get(r.created_by),
-      }))
-    },
+    queryFn: () => getAttendanceWithStudents(schoolId!),
     enabled: !!schoolId,
   })
 
@@ -132,12 +108,12 @@ function StudentAttendanceHistory({ schoolId }: { schoolId?: string | null }) {
                 {format(new Date(record.date), "dd/MM/yyyy")}
               </TableCell>
               <TableCell className="text-xs font-medium">
-                {record.students?.last_name}, {record.students?.first_name}
+                {record.student?.lastName}, {record.student?.firstName}
               </TableCell>
               <TableCell className="text-xs tabular-nums">
-                {record.students?.dni}
+                {record.student?.dni}
               </TableCell>
-              <TableCell className="text-xs">{record.divisions?.name}</TableCell>
+              <TableCell className="text-xs">{record.division?.name}</TableCell>
               <TableCell>
                 <Badge
                   variant="outline"
@@ -150,7 +126,7 @@ function StudentAttendanceHistory({ schoolId }: { schoolId?: string | null }) {
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
                 {record.creator
-                  ? `${record.creator.last_name}, ${record.creator.first_name}`
+                  ? `${record.creator.lastName}, ${record.creator.firstName}`
                   : "—"}
               </TableCell>
             </TableRow>
@@ -164,38 +140,7 @@ function StudentAttendanceHistory({ schoolId }: { schoolId?: string | null }) {
 function EmployeeAttendanceHistory({ schoolId }: { schoolId?: string | null }) {
   const { data, isLoading } = useQuery({
     queryKey: ["history", "employee-attendance", schoolId],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data: records, error } = await supabase
-        .from("employee_attendance")
-        .select("*")
-        .eq("school_id", schoolId!)
-        .order("created_at", { ascending: false })
-        .limit(200)
-      if (error) throw error
-
-      const allIds = [
-        ...new Set(
-          (records ?? []).flatMap((r) =>
-            [r.employee_id, r.created_by].filter(Boolean)
-          )
-        ),
-      ]
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, first_name, last_name")
-        .in("id", allIds)
-
-      const profileMap = new Map(
-        (profiles ?? []).map((p) => [p.id, p])
-      )
-
-      return (records ?? []).map((r) => ({
-        ...r,
-        employee: profileMap.get(r.employee_id),
-        creator: profileMap.get(r.created_by),
-      }))
-    },
+    queryFn: () => getEmployeeAttendanceHistory(schoolId!),
     enabled: !!schoolId,
   })
 
@@ -230,7 +175,7 @@ function EmployeeAttendanceHistory({ schoolId }: { schoolId?: string | null }) {
               </TableCell>
               <TableCell className="text-xs font-medium">
                 {record.employee
-                  ? `${record.employee.last_name}, ${record.employee.first_name}`
+                  ? `${record.employee.lastName}, ${record.employee.firstName}`
                   : "—"}
               </TableCell>
               <TableCell>
@@ -245,7 +190,7 @@ function EmployeeAttendanceHistory({ schoolId }: { schoolId?: string | null }) {
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
                 {record.creator
-                  ? `${record.creator.last_name}, ${record.creator.first_name}`
+                  ? `${record.creator.lastName}, ${record.creator.firstName}`
                   : "—"}
               </TableCell>
             </TableRow>
@@ -259,33 +204,7 @@ function EmployeeAttendanceHistory({ schoolId }: { schoolId?: string | null }) {
 function GradesHistory({ schoolId }: { schoolId?: string | null }) {
   const { data, isLoading } = useQuery({
     queryKey: ["history", "grades", schoolId],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data: records, error } = await supabase
-        .from("grades")
-        .select("*, students(first_name, last_name, dni), subjects(name)")
-        .eq("school_id", schoolId!)
-        .order("updated_at", { ascending: false })
-        .limit(200)
-      if (error) throw error
-
-      const userIds = [
-        ...new Set((records ?? []).map((r) => r.updated_by).filter(Boolean)),
-      ]
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, first_name, last_name")
-        .in("id", userIds)
-
-      const profileMap = new Map(
-        (profiles ?? []).map((p) => [p.id, p])
-      )
-
-      return (records ?? []).map((r) => ({
-        ...r,
-        updater: profileMap.get(r.updated_by),
-      }))
-    },
+    queryFn: () => getGradesWithStudents(schoolId!),
     enabled: !!schoolId,
   })
 
@@ -320,27 +239,27 @@ function GradesHistory({ schoolId }: { schoolId?: string | null }) {
           {data.map((record) => (
             <TableRow key={record.id}>
               <TableCell className="text-xs tabular-nums">
-                {format(new Date(record.updated_at), "dd/MM/yyyy HH:mm")}
+                {record.updatedAt ? format(record.updatedAt, "dd/MM/yyyy HH:mm") : "—"}
               </TableCell>
               <TableCell className="text-xs font-medium">
-                {record.students?.last_name}, {record.students?.first_name}
+                {record.student?.lastName}, {record.student?.firstName}
               </TableCell>
-              <TableCell className="text-xs">{record.subjects?.name}</TableCell>
+              <TableCell className="text-xs">{record.subject?.name}</TableCell>
               <TableCell className="text-center text-xs tabular-nums">
-                {record.partial_1 ?? "—"}
-              </TableCell>
-              <TableCell className="text-center text-xs tabular-nums">
-                {record.final_1 != null ? record.final_1 : "—"}
+                {record.partial1 ?? "—"}
               </TableCell>
               <TableCell className="text-center text-xs tabular-nums">
-                {record.partial_2 ?? "—"}
+                {record.final1 != null ? record.final1 : "—"}
               </TableCell>
               <TableCell className="text-center text-xs tabular-nums">
-                {record.final_2 != null ? record.final_2 : "—"}
+                {record.partial2 ?? "—"}
+              </TableCell>
+              <TableCell className="text-center text-xs tabular-nums">
+                {record.final2 != null ? record.final2 : "—"}
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
                 {record.updater
-                  ? `${record.updater.last_name}, ${record.updater.first_name}`
+                  ? `${record.updater.lastName}, ${record.updater.firstName}`
                   : "—"}
               </TableCell>
             </TableRow>

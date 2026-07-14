@@ -43,7 +43,7 @@ import { useBookEntries, useCreateBookEntry } from "@/hooks/use-book"
 import { useStudentSearch } from "@/hooks/use-students"
 import { BOOK_ENTRY_TYPES } from "@/lib/constants"
 import { formatDateTime, formatDate } from "@/lib/utils"
-import type { BookEntryType } from "@/types/database"
+import type { BookEntryType, PreceptorBookEntry } from "@/types/database"
 
 const BOOK_TYPE_COLORS: Record<BookEntryType, string> = {
   incident: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
@@ -85,7 +85,7 @@ export default function BookPage() {
     if (filters.search.trim()) {
       const q = filters.search.toLowerCase()
       result = result.filter(
-        (e) =>
+        (e: PreceptorBookEntry) =>
           e.title.toLowerCase().includes(q) ||
           e.description.toLowerCase().includes(q)
       )
@@ -185,7 +185,7 @@ export default function BookPage() {
       ) : (
         <>
           <div className="grid gap-3">
-            {paginated.map((entry, idx) => (
+            {paginated.map((entry: PreceptorBookEntry, idx: number) => (
               <Dialog
                 key={entry.id}
                 open={selectedEntry === idx}
@@ -220,10 +220,10 @@ export default function BookPage() {
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                         <span>
                           {(entry as any).students
-                            ? `${(entry as any).students.first_name} ${(entry as any).students.last_name}`
+                            ? `${(entry as any).students.firstName} ${(entry as any).students.lastName}`
                             : "Sin estudiante"}
                         </span>
-                        <span>{formatDateTime(entry.created_at)}</span>
+                        <span>{entry.createdAt ? formatDateTime(entry.createdAt) : ""}</span>
                       </div>
                     </CardContent>
                   </Card>
@@ -249,12 +249,12 @@ export default function BookPage() {
                       <p>
                         Estudiante:{" "}
                         {(entry as any).students
-                          ? `${(entry as any).students.first_name} ${(entry as any).students.last_name}`
+                          ? `${(entry as any).students.firstName} ${(entry as any).students.lastName}`
                           : "No vinculado"}
                       </p>
-                      <p>Creado: {formatDateTime(entry.created_at)}</p>
+                      <p>Creado: {entry.createdAt ? formatDateTime(entry.createdAt) : ""}</p>
                       <p>
-                        Fecha: {formatDate(entry.created_at)}
+                        Fecha: {entry.createdAt ? formatDate(entry.createdAt) : ""}
                       </p>
                     </div>
                   </div>
@@ -309,11 +309,11 @@ function NewEntryForm({ onSuccess }: { onSuccess: () => void }) {
     e.preventDefault()
     if (!type || !title || !description) return
     await createEntry.mutateAsync({
-      school_id: "",
+      schoolId: "",
       type: type as BookEntryType,
       title,
       description,
-      student_id: selectedStudentId,
+      studentId: selectedStudentId,
     })
     onSuccess()
   }
@@ -384,7 +384,7 @@ function NewEntryForm({ onSuccess }: { onSuccess: () => void }) {
             <p className="text-xs text-muted-foreground">
               Estudiante seleccionado:{" "}
               {students?.find((s) => s.id === selectedStudentId)
-                ? `${students.find((s) => s.id === selectedStudentId)!.first_name} ${students.find((s) => s.id === selectedStudentId)!.last_name}`
+                ? `${students.find((s) => s.id === selectedStudentId)!.firstName} ${students.find((s) => s.id === selectedStudentId)!.lastName}`
                 : "Cargando..."}
             </p>
           )}
@@ -397,10 +397,10 @@ function NewEntryForm({ onSuccess }: { onSuccess: () => void }) {
                   className="w-full px-3 py-1.5 text-left text-sm hover:bg-muted transition-colors"
                   onClick={() => {
                     setSelectedStudentId(s.id)
-                    setStudentSearch(`${s.first_name} ${s.last_name}`)
+                    setStudentSearch(`${s.firstName} ${s.lastName}`)
                   }}
                 >
-                  {s.first_name} {s.last_name} - {s.dni}
+                  {s.firstName} {s.lastName} - {s.dni}
                 </button>
               ))}
             </div>

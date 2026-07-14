@@ -29,15 +29,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { DAY_LABELS } from "@/lib/constants"
+import { createSubject } from "@/services/courses"
 import type { Subject, Profile } from "@/types/database"
 
 interface ScheduleEntry {
   id?: string
-  day_of_week: number
-  time_start: string
-  time_end: string
-  subject_id: string
-  teacher_id: string
+  dayOfWeek: number
+  timeStart: string
+  timeEnd: string
+  subjectId: string
+  teacherId: string
 }
 
 interface DivisionScheduleEditorProps {
@@ -72,7 +73,7 @@ export function DivisionScheduleEditor({
       if (!res.ok) throw new Error(data.error)
       return (data.schedules ?? []) as (ScheduleEntry & {
         subject?: { name: string }
-        teacher?: { first_name: string; last_name: string }
+        teacher?: { firstName: string; lastName: string }
       })[]
     },
     enabled: !!divisionId,
@@ -81,16 +82,16 @@ export function DivisionScheduleEditor({
   const saveMutation = useMutation({
     mutationFn: async (entries: ScheduleEntry[]) => {
       const schedules = entries.map((e) => ({
-        day_of_week: e.day_of_week,
-        time_start: e.time_start,
-        time_end: e.time_end,
-        subject_id: e.subject_id,
-        teacher_id: e.teacher_id,
+        dayOfWeek: e.dayOfWeek,
+        timeStart: e.timeStart,
+        timeEnd: e.timeEnd,
+        subjectId: e.subjectId,
+        teacherId: e.teacherId,
       }))
       const res = await fetch("/api/division-schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ division_id: divisionId, school_id: schoolId, schedules }),
+        body: JSON.stringify({ division_id: divisionId, schoolId: schoolId, schedules }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -110,12 +111,12 @@ export function DivisionScheduleEditor({
     if (!schedules) return new Map<number, typeof schedules>()
     const map = new Map<number, typeof schedules>()
     for (const s of schedules) {
-      const existing = map.get(s.day_of_week) ?? []
+      const existing = map.get(s.dayOfWeek) ?? []
       existing.push(s)
-      map.set(s.day_of_week, existing)
+      map.set(s.dayOfWeek, existing)
     }
     for (const [, entries] of map) {
-      entries.sort((a, b) => a.time_start.localeCompare(b.time_start))
+      entries.sort((a, b) => a.timeStart.localeCompare(b.timeStart))
     }
     return map
   }, [schedules])
@@ -124,7 +125,7 @@ export function DivisionScheduleEditor({
     if (!schedules) return []
     const set = new Set<string>()
     for (const s of schedules) {
-      set.add(s.time_start.slice(0, 5))
+      set.add(s.timeStart.slice(0, 5))
     }
     return Array.from(set).sort()
   }, [schedules])
@@ -133,7 +134,7 @@ export function DivisionScheduleEditor({
     if (!schedules) return []
     const set = new Set<number>()
     for (const s of schedules) {
-      set.add(s.day_of_week)
+      set.add(s.dayOfWeek)
     }
     return Array.from(set).sort()
   }, [schedules])
@@ -143,7 +144,7 @@ export function DivisionScheduleEditor({
   const getScheduleAt = (day: number, timeStart: string) => {
     const entries = groupedSchedules.get(day)
     if (!entries) return null
-    return entries.find((s) => s.time_start.slice(0, 5) === timeStart) ?? null
+    return entries.find((s) => s.timeStart.slice(0, 5) === timeStart) ?? null
   }
 
   const handleSave = (entry: ScheduleEntry, index: number | null) => {
@@ -225,22 +226,22 @@ export function DivisionScheduleEditor({
                               index: idx,
                               entry: {
                                 id: entry.id,
-                                day_of_week: day,
-                                time_start: ts,
-                                time_end: entry.time_end.slice(0, 5),
-                                subject_id: entry.subject_id,
-                                teacher_id: entry.teacher_id,
+                                dayOfWeek: day,
+                                timeStart: ts,
+                                timeEnd: entry.timeEnd.slice(0, 5),
+                                subjectId: entry.subjectId,
+                                teacherId: entry.teacherId,
                               },
                             })
                           } else {
                             setEditEntry({
                               index: -1,
                               entry: {
-                                day_of_week: day,
-                                time_start: ts,
-                                time_end: ts,
-                                subject_id: "",
-                                teacher_id: "",
+                                dayOfWeek: day,
+                                timeStart: ts,
+                                timeEnd: ts,
+                                subjectId: "",
+                                teacherId: "",
                               },
                             })
                           }
@@ -253,11 +254,11 @@ export function DivisionScheduleEditor({
                             </p>
                             <p className="text-[9px] text-muted-foreground leading-tight">
                               {entry.teacher
-                                ? `${entry.teacher.last_name}, ${entry.teacher.first_name}`
+                                ? `${entry.teacher.lastName}, ${entry.teacher.firstName}`
                                 : "—"}
                             </p>
                             <p className="text-[8px] text-muted-foreground/60 leading-tight">
-                              {entry.time_end.slice(0, 5)}
+                              {entry.timeEnd.slice(0, 5)}
                             </p>
                           </div>
                         ) : (
@@ -342,11 +343,11 @@ function ScheduleEntryDialog({
   onDelete?: () => void
   saving: boolean
 }) {
-  const [dayOfWeek, setDayOfWeek] = useState(entry?.day_of_week ?? 1)
-  const [timeStart, setTimeStart] = useState(entry?.time_start ?? "08:00")
-  const [timeEnd, setTimeEnd] = useState(entry?.time_end ?? "09:00")
-  const [subjectId, setSubjectId] = useState(entry?.subject_id ?? "")
-  const [teacherId, setTeacherId] = useState(entry?.teacher_id ?? "")
+  const [dayOfWeek, setDayOfWeek] = useState(entry?.dayOfWeek ?? 1)
+  const [timeStart, setTimeStart] = useState(entry?.timeStart ?? "08:00")
+  const [timeEnd, setTimeEnd] = useState(entry?.timeEnd ?? "09:00")
+  const [subjectId, setSubjectId] = useState(entry?.subjectId ?? "")
+  const [teacherId, setTeacherId] = useState(entry?.teacherId ?? "")
   const [showNewSubject, setShowNewSubject] = useState(false)
   const [newSubjectName, setNewSubjectName] = useState("")
   const [creatingSubject, setCreatingSubject] = useState(false)
@@ -355,13 +356,7 @@ function ScheduleEntryDialog({
     if (!newSubjectName.trim()) return
     setCreatingSubject(true)
     try {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("subjects")
-        .insert({ school_id: schoolId, academic_year_id: academicYearId, name: newSubjectName.trim() })
-        .select()
-        .single()
-      if (error) throw error
+      const data = await createSubject({ schoolId: schoolId, academicYearId: academicYearId, name: newSubjectName.trim() })
       setSubjectId(data.id)
       setNewSubjectName("")
       setShowNewSubject(false)
@@ -494,7 +489,7 @@ function ScheduleEntryDialog({
                 )}
                 {teachers.map((t) => (
                   <SelectItem key={t.id} value={t.id} className="text-xs">
-                    {t.last_name}, {t.first_name}
+                    {t.lastName}, {t.firstName}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -517,11 +512,11 @@ function ScheduleEntryDialog({
             size="sm"
             onClick={() =>
               onSave({
-                day_of_week: dayOfWeek,
-                time_start: timeStart,
-                time_end: timeEnd,
-                subject_id: subjectId,
-                teacher_id: teacherId,
+                dayOfWeek: dayOfWeek,
+                timeStart: timeStart,
+                timeEnd: timeEnd,
+                subjectId: subjectId,
+                teacherId: teacherId,
               })
             }
             disabled={saving || !subjectId || !teacherId}

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/contexts/auth-context"
-import { createClient } from "@/lib/supabase/client"
+import { authClient } from "@/lib/auth-client"
 
 const updateSchema = z
   .object({
@@ -45,17 +45,8 @@ export default function UpdatePasswordPage() {
   })
 
   useEffect(() => {
-    const supabase = createClient()
-
-    supabase.auth.onAuthStateChange(async (event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setIsRecovery(true)
-      }
-      setChecking(false)
-    })
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+    authClient.getSession().then(({ data }) => {
+      if (data?.session) {
         setIsRecovery(true)
       }
       setChecking(false)

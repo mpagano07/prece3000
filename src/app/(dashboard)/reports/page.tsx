@@ -35,6 +35,7 @@ import { useCourses, useDivisions } from "@/hooks/use-courses"
 import { useStudents } from "@/hooks/use-students"
 import { useActiveAcademicYear } from "@/hooks/use-academic-years"
 import { useAuth } from "@/contexts/auth-context"
+import { getAttendanceReportWithStudents, getAttendanceByDateRange } from "@/services/attendance"
 import { cn } from "@/lib/utils"
 
 interface ReportType {
@@ -166,8 +167,8 @@ export default function ReportsPage() {
                 startY: yPos,
                 head: [["Apellido", "Nombre", "DNI", "Estado"]],
                 body: studentData.map((s) => [
-                  s.last_name,
-                  s.first_name,
+                  s.lastName,
+                  s.firstName,
                   s.dni,
                   s.status === "active" ? "Activo" : "Inactivo",
                 ]),
@@ -183,18 +184,20 @@ export default function ReportsPage() {
             doc.setFontSize(10)
             doc.text("Seleccioná una división para generar el reporte.", 14, yPos)
           } else {
-            const supabase = (await import("@/lib/supabase/client")).createClient()
-            const { data: attendanceRecords } = await supabase
-              .from("attendance")
-              .select("*, students(first_name, last_name, dni)")
-              .eq("division_id", divisionId)
-              .eq("school_id", school!.id)
-              .gte("date", startDate || today)
-              .lte("date", endDate || today)
-              .order("date", { ascending: true })
-              .order("students(last_name)", { ascending: true })
-
-            const records = attendanceRecords ?? []
+            const rawRecords = await getAttendanceReportWithStudents(
+              divisionId,
+              school!.id,
+              startDate || today,
+              endDate || today
+            )
+            const records = rawRecords.map((r) => ({
+              ...r,
+              students: r.student ? {
+                firstName: r.student.firstName,
+                lastName: r.student.lastName,
+                dni: r.student.dni,
+              } : null,
+            }))
             if (records.length === 0) {
               doc.setFontSize(10)
               doc.text("No hay registros de asistencia en el período seleccionado.", 14, yPos)
@@ -211,7 +214,7 @@ export default function ReportsPage() {
                 head: [["Fecha", "Alumno", "DNI", "Estado"]],
                 body: records.map((r) => [
                   format(new Date(r.date), "dd/MM/yyyy"),
-                  `${r.students?.last_name ?? ""}, ${r.students?.first_name ?? ""}`,
+                  `${r.students?.lastName ?? ""}, ${r.students?.firstName ?? ""}`,
                   r.students?.dni ?? "",
                   r.status === "present" ? "Presente"
                     : r.status === "absent" ? "Ausente"
@@ -232,15 +235,12 @@ export default function ReportsPage() {
             doc.setFontSize(10)
             doc.text("Seleccioná una división para generar el reporte.", 14, yPos)
           } else {
-            const supabase = (await import("@/lib/supabase/client")).createClient()
-            const { data: attendanceRecords } = await supabase
-              .from("attendance")
-              .select("date, status")
-              .eq("division_id", divisionId)
-              .eq("school_id", school!.id)
-              .gte("date", startDate || today)
-              .lte("date", endDate || today)
-              .order("date", { ascending: true })
+            const attendanceRecords = await getAttendanceByDateRange(
+              divisionId,
+              school!.id,
+              startDate || today,
+              endDate || today
+            )
 
             const records = attendanceRecords ?? []
             if (records.length === 0) {
@@ -292,7 +292,7 @@ export default function ReportsPage() {
             : null
           doc.setFontSize(10)
           doc.text(
-            `Estudiante: ${selectedStudent ? `${selectedStudent.last_name}, ${selectedStudent.first_name}` : "No seleccionado"}`,
+            `Estudiante: ${selectedStudent ? `${selectedStudent.lastName}, ${selectedStudent.firstName}` : "No seleccionado"}`,
             14,
             yPos
           )
@@ -425,7 +425,7 @@ export default function ReportsPage() {
                     <SelectContent>
                       {students?.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.last_name}, {s.first_name}
+                          {s.lastName}, {s.firstName}
                         </SelectItem>
                       ))}
                     </SelectContent>

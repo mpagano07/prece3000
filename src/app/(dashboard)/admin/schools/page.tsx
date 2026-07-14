@@ -48,18 +48,16 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { LoadingScreen } from "@/components/shared/loading-screen"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { useAuth } from "@/contexts/auth-context"
-import { SchoolService } from "@/services/schools"
+import { getAllSchools, getSchoolStats, deleteSchool, updateSchool, createSchool, reactivateSchool, getActiveSchools, getAcademicYearsBySchool } from "@/services/schools"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { createClient } from "@/lib/supabase/client"
 import type { School } from "@/types/database"
 
 function useSchools() {
   return useQuery({
     queryKey: ["schools"],
     queryFn: async () => {
-      const supabase = createClient()
-      return SchoolService.getAll(supabase)
+      return getAllSchools()
     },
   })
 }
@@ -103,8 +101,7 @@ export default function AdminSchoolsPage() {
       return
     }
     try {
-      const supabase = createClient()
-      const schoolStats = await SchoolService.getStats(supabase, schoolId)
+      const schoolStats = await getSchoolStats(schoolId)
       setStats((prev) => ({ ...prev, [schoolId]: schoolStats }))
       setExpandedSchool(schoolId)
     } catch (err) {
@@ -157,12 +154,7 @@ export default function AdminSchoolsPage() {
                         size="icon-sm"
                         onClick={async () => {
                           try {
-                            const supabase = createClient()
-                            const { error } = await supabase
-                              .from("schools")
-                              .update({ active: true })
-                              .eq("id", school.id)
-                            if (error) throw error
+                            await reactivateSchool(school.id)
                             toast.success("Escuela reactivada")
                             queryClient.invalidateQueries({ queryKey: ["schools"] })
                           } catch (err) {
@@ -263,8 +255,7 @@ export default function AdminSchoolsPage() {
         onConfirm={async () => {
           if (!deleteSchoolId) return
           try {
-            const supabase = createClient()
-            await SchoolService.delete(supabase, deleteSchoolId)
+            await deleteSchool(deleteSchoolId)
             toast.success("Escuela desactivada")
             queryClient.invalidateQueries({ queryKey: ["schools"] })
             setDeleteSchoolId(null)
@@ -292,7 +283,7 @@ function AcademicYearsDialog({
   const { school } = useAuth()
   const queryClient = useQueryClient()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [newAY, setNewAY] = useState({ name: "", start_date: "", end_date: "" })
+  const [newAY, setNewAY] = useState({ name: "", startDate: "", endDate: "" })
   const [deleteAyId, setDeleteAyId] = useState<string | null>(null)
   const [selectedSchoolId, setSelectedSchoolId] = useState(school?.id ?? "")
 
@@ -303,14 +294,7 @@ function AcademicYearsDialog({
   const { data: allSchools } = useQuery({
     queryKey: ["admin-schools-list"],
     queryFn: async () => {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("schools")
-        .select("id, name")
-        .eq("active", true)
-        .order("name")
-      if (error) throw error
-      return data ?? []
+      return getActiveSchools()
     },
   })
 
@@ -327,14 +311,10 @@ function AcademicYearsDialog({
   const { data: academicYears, isLoading } = useQuery({
     queryKey: ["admin-academic-years"],
     queryFn: async () => {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("academic_years")
-        .select("*")
-        .order("start_date", { ascending: false })
-      if (error) throw error
-      return data ?? []
+      if (!selectedSchoolId) return []
+      return getAcademicYearsBySchool(selectedSchoolId)
     },
+    enabled: !!selectedSchoolId,
   })
 
   const createMutation = useMutation({
@@ -343,7 +323,7 @@ function AcademicYearsDialog({
       const res = await fetch("/api/academic-years", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newAY, school_id: selectedSchoolId }),
+        body: JSON.stringify({ ...newAY, schoolId: selectedSchoolId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -352,7 +332,7 @@ function AcademicYearsDialog({
     onSuccess: () => {
       toast.success("Año académico creado")
       setIsCreateOpen(false)
-      setNewAY({ name: "", start_date: "", end_date: "" })
+      setNewAY({ name: "", startDate: "", endDate: "" })
       queryClient.invalidateQueries({ queryKey: ["admin-academic-years"] })
       queryClient.invalidateQueries({ queryKey: ["activeAcademicYear"] })
     },
@@ -452,16 +432,16 @@ function AcademicYearsDialog({
                     <Label>Fecha inicio</Label>
                     <Input
                       type="date"
-                      value={newAY.start_date}
-                      onChange={(e) => setNewAY({ ...newAY, start_date: e.target.value })}
+                      value={newAY.startDate}
+                      onChange={(e) => setNewAY({ ...newAY, startDate: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Fecha fin</Label>
                     <Input
                       type="date"
-                      value={newAY.end_date}
-                      onChange={(e) => setNewAY({ ...newAY, end_date: e.target.value })}
+                      value={newAY.endDate}
+                      onChange={(e) => setNewAY({ ...newAY, endDate: e.target.value })}
                     />
                   </div>
                 </div>
@@ -470,7 +450,7 @@ function AcademicYearsDialog({
                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
                 <Button
                   onClick={() => createMutation.mutate()}
-                  disabled={createMutation.isPending || !newAY.name || !newAY.start_date || !newAY.end_date}
+                  disabled={createMutation.isPending || !newAY.name || !newAY.startDate || !newAY.endDate}
                 >
                   {createMutation.isPending ? "Creando..." : "Crear"}
                 </Button>
@@ -499,11 +479,11 @@ function AcademicYearsDialog({
                       <div className="flex-1 min-w-0 ml-2">
                         <CardTitle className="text-sm">{ay.name}</CardTitle>
                         <CardDescription className="text-xs">
-                          {ay.start_date} — {ay.end_date}
+                          {ay.startDate} — {ay.endDate}
                         </CardDescription>
-                        {schoolMap.get(ay.school_id) && (
+                        {schoolMap.get(ay.schoolId) && (
                           <p className="mt-1 text-[11px] font-medium text-muted-foreground/70">
-                            {schoolMap.get(ay.school_id)}
+                            {schoolMap.get(ay.schoolId)}
                           </p>
                         )}
                       </div>
@@ -568,12 +548,11 @@ function SchoolForm({
     e.preventDefault()
     setSaving(true)
     try {
-      const supabase = createClient()
       if (school) {
-        await SchoolService.update(supabase, school.id, { name, address, phone, email })
+        await updateSchool(school.id, { name, address, phone, email })
         toast.success("Escuela actualizada correctamente")
       } else {
-        await SchoolService.create(supabase, { name, address, phone, email })
+        await createSchool({ name, address, phone, email })
         toast.success("Escuela creada correctamente")
       }
       queryClient.invalidateQueries({ queryKey: ["schools"] })

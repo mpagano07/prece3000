@@ -1,126 +1,49 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/client"
+"use server"
+
+import { db } from "@/lib/db"
+import { documents } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import type { Document, DocumentType } from "@/types/database"
-import { getActiveSchoolId } from "@/lib/active-school"
+import { uploadToR2, deleteFromR2, getR2KeyFromUrl } from "@/lib/r2"
 
-export class DocumentService {
-  static async getByStudent(
-    supabase: SupabaseClient,
-    studentId: string
-  ): Promise<Document[]> {
-    const { data, error } = await supabase
-      .from("documents")
-      .select("*")
-      .eq("student_id", studentId)
-      .order("uploaded_at", { ascending: false })
-
-    if (error) throw new Error(`Error fetching documents: ${error.message}`)
-    return data ?? []
-  }
-
-  static async upload(
-    supabase: SupabaseClient,
-    schoolId: string,
-    studentId: string,
-    file: File,
-    type: DocumentType,
-    userId: string
-  ): Promise<Document> {
-    const ext = file.name.split(".").pop()
-    const filePath = `${schoolId}/${studentId}/${crypto.randomUUID()}.${ext}`
-
-    const { error: uploadError } = await supabase.storage
-      .from("student-documents")
-      .upload(filePath, file)
-
-    if (uploadError) throw new Error(`Error uploading document: ${uploadError.message}`)
-
-    const { data: urlData } = supabase.storage
-      .from("student-documents")
-      .getPublicUrl(filePath)
-
-    const { data: document, error: dbError } = await supabase
-      .from("documents")
-      .insert({
-        school_id: schoolId,
-        student_id: studentId,
-        name: file.name,
-        type,
-        file_url: urlData.publicUrl,
-        uploaded_by: userId,
-      })
-      .select()
-      .single()
-
-    if (dbError) {
-      await supabase.storage.from("student-documents").remove([filePath])
-      throw new Error(`Error saving document record: ${dbError.message}`)
-    }
-
-    return document
-  }
-
-  static async delete(
-    supabase: SupabaseClient,
-    id: string,
-    fileUrl: string
-  ): Promise<void> {
-    const { error: dbError } = await supabase.from("documents").delete().eq("id", id)
-
-    if (dbError) throw new Error(`Error deleting document record: ${dbError.message}`)
-
-    const filePath = fileUrl.split("/").slice(-3).join("/")
-    const { error: storageError } = await supabase.storage
-      .from("student-documents")
-      .remove([filePath])
-
-    if (storageError) throw new Error(`Error deleting file from storage: ${storageError.message}`)
-  }
+export async function getDocumentsByStudent(studentId: string): Promise<Document[]> {
+  return db.query.documents.findMany({
+    where: eq(documents.studentId, studentId),
+    orderBy: (t, { desc }) => [desc(t.uploadedAt)],
+  }) as Promise<Document[]>
 }
 
-async function ensureContext(client = createClient()) {
-  const { data: { user } } = await client.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  const activeSchoolId = getActiveSchoolId()
-  if (activeSchoolId) {
-    return { supabase: client, userId: user.id, schoolId: activeSchoolId }
-  }
-  const { data: profile } = await client
-    .from("profiles")
-    .select("school_id")
-    .eq("id", user.id)
-    .maybeSingle()
-  if (!profile?.school_id) throw new Error("No active school selected")
-  return { supabase: client, userId: user.id, schoolId: profile.school_id }
-}
+export async function uploadDocument(
+  schoolId: string,
+  studentId: string,
+  file: File,
+  type: DocumentType,
+  userId: string
+): Promise<Document> {
+  const ext = file.name.split(".").pop()
+  const key = `student-documents/${schoolId}/${studentId}/${crypto.randomUUID()}.${ext}`
+  const url = await uploadToR2(key, file)
 
-export const documentService = {
-  async getStudentDocuments(studentId: string) {
-    const { supabase } = await ensureContext()
-    return DocumentService.getByStudent(supabase, studentId)
-  },
-  async upload(data: Omit<Document, "id" | "uploaded_at" | "uploaded_by"> & { file?: File }) {
-    const { supabase, schoolId, userId } = await ensureContext()
-    if (!data.file) throw new Error("File is required")
-    return DocumentService.upload(
-      supabase,
+  const rows = await db
+    .insert(documents)
+    .values({
       schoolId,
-      data.student_id,
-      data.file,
-      data.type as DocumentType,
-      userId
-    )
-  },
-  async delete(documentId: string) {
-    const { supabase } = await ensureContext()
-    const { data: doc } = await supabase
-      .from("documents")
-      .select("file_url")
-      .eq("id", documentId)
-      .single()
+      studentId,
+      name: file.name,
+      type,
+      fileUrl: url,
+      uploadedBy: userId,
+    })
+    .returning()
 
-    if (!doc) throw new Error("Document not found")
+  return rows[0] as Document
+}
 
-    return DocumentService.delete(supabase, documentId, doc.file_url)
-  },
+export async function deleteDocument(id: string, fileUrl: string): Promise<void> {
+  await db.delete(documents).where(eq(documents.id, id))
+
+  const key = getR2KeyFromUrl(fileUrl)
+  if (key) {
+    await deleteFromR2(key)
+  }
 }

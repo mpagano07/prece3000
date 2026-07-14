@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { useStudentsPaginated, useStudentSearch } from "@/hooks/use-students"
 import { useCourses } from "@/hooks/use-courses"
-import { courseService } from "@/services/courses"
+import { getDivisions } from "@/services/courses"
 import { LoadingScreen } from "@/components/shared/loading-screen"
 import { EmptyState } from "@/components/shared/empty-state"
 import { PageHeader } from "@/components/shared/page-header"
@@ -73,7 +73,7 @@ export default function StudentsPage() {
     queryKey: ["all-divisions", ...courseIds],
     queryFn: async () => {
       const results = await Promise.all(
-        courseIds.map((id) => courseService.getDivisions(id))
+        courseIds.map((id) => getDivisions(id))
       )
       return results.flat()
     },
@@ -83,7 +83,7 @@ export default function StudentsPage() {
   const divisionIdsForCourse = useMemo(() => {
     if (!courseId) return undefined
     return (allDivisions ?? [])
-      .filter((d) => d.course_id === courseId)
+      .filter((d) => d.courseId === courseId)
       .map((d) => d.id)
   }, [courseId, allDivisions])
 
@@ -214,8 +214,8 @@ export default function StudentsPage() {
             </TableHeader>
             <TableBody>
               {displayStudents.map((student) => {
-                const div = student.division_id
-                  ? divisionLookup.get(student.division_id)
+                const div = student.divisionId
+                  ? divisionLookup.get(student.divisionId)
                   : undefined
                 return (
                   <TableRow
@@ -225,25 +225,25 @@ export default function StudentsPage() {
                   >
                     <TableCell>
                       <Avatar size="sm">
-                        {student.photo_url && (
-                          <AvatarImage src={student.photo_url} />
+                        {student.photoUrl && (
+                          <AvatarImage src={student.photoUrl} />
                         )}
                         <AvatarFallback>
-                          {getInitials(student.first_name, student.last_name)}
+                          {getInitials(student.firstName, student.lastName)}
                         </AvatarFallback>
                       </Avatar>
                     </TableCell>
                     <TableCell className="font-medium">
-                      {student.last_name}, {student.first_name}
+                      {student.lastName}, {student.firstName}
                     </TableCell>
                     <TableCell>{student.dni}</TableCell>
                     <TableCell>{div?.name ?? "-"}</TableCell>
                     <TableCell>{div?.course?.name ?? "-"}</TableCell>
                     <TableCell>
                       <Badge
-                        variant={statusBadge[student.status] ?? "outline"}
+                        variant={statusBadge[student.status ?? ""] ?? "outline"}
                       >
-                        {statusLabel[student.status] ?? student.status}
+                        {statusLabel[student.status ?? ""] ?? student.status}
                       </Badge>
                     </TableCell>
                     <TableCell>

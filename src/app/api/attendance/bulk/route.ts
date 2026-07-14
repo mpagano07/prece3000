@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { attendance, attendanceLog } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
+import { sql } from "drizzle-orm"
+import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
@@ -13,83 +17,74 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
+    const userId = session.user.id
 
-    const { data: existingRecords } = await adminClient
-      .from("attendance")
-      .select("id, student_id, status")
-      .eq("division_id", divisionId)
-      .eq("date", date)
+    const existingRecords = await db
+      .select({ id: attendance.id, studentId: attendance.studentId, status: attendance.status })
+      .from(attendance)
+      .where(and(eq(attendance.divisionId, divisionId), eq(attendance.date, date)))
 
     const existingMap = new Map(
-      (existingRecords ?? []).map((r) => [r.student_id, r])
+      existingRecords.map((r) => [r.studentId, r])
     )
 
-    const recordsJson = records.map(
-      (r: {
-        student_id: string
-        status: string
-        observation?: string
-      }) => ({
-        school_id: schoolId,
-        student_id: r.student_id,
-        division_id: divisionId,
-        date,
-        status: r.status,
-        observation: r.observation ?? null,
-      })
-    )
+    const result: Array<{ id: string; studentId: string; status: string }> = []
 
-    const { data: upserted, error: upsertError } = await adminClient.rpc(
-      "bulk_upsert_attendance",
-      {
-        p_records: recordsJson,
-        p_user_id: user.id,
+    for (const record of records) {
+      const existing = existingMap.get(record.student_id)
+
+      if (existing) {
+        const [updated] = await db
+          .update(attendance)
+          .set({
+            status: record.status,
+            observation: record.observation ?? null,
+            updatedAt: new Date(),
+          })
+          .where(eq(attendance.id, existing.id))
+          .returning()
+
+        result.push({ id: updated.id, studentId: record.studentId, status: record.status })
+      } else {
+        const [created] = await db
+          .insert(attendance)
+          .values({
+            schoolId,
+            studentId: record.student_id,
+            divisionId,
+            date,
+            status: record.status,
+            observation: record.observation ?? null,
+            createdBy: userId,
+          })
+          .returning()
+
+        result.push({ id: created.id, studentId: record.student_id, status: record.status })
       }
-    )
-
-    if (upsertError) {
-      return NextResponse.json(
-        { error: `Error al guardar asistencia: ${upsertError.message}` },
-        { status: 500 }
-      )
     }
 
-    const result = upserted ?? []
-
     const logEntries = result
-      .filter(
-        (record: { student_id: string; status: string }) => {
-          const existing = existingMap.get(record.student_id)
-          return !existing || existing.status !== record.status
-        }
-      )
-      .map((record: { id: string; student_id: string; status: string }) => {
-        const existing = existingMap.get(record.student_id)
+      .filter((record) => {
+        const existing = existingMap.get(record.studentId)
+        return !existing || existing.status !== record.status
+      })
+      .map((record) => {
+        const existing = existingMap.get(record.studentId)
         return {
-          attendance_id: record.id,
-          previous_status: existing?.status ?? null,
-          new_status: record.status,
-          changed_by: user.id,
+          attendanceId: record.id,
+          previousStatus: existing?.status ?? null,
+          newStatus: record.status as "present" | "absent" | "absent_justified" | "late" | "early_withdrawal",
+          changedBy: userId,
         }
       })
 
     if (logEntries.length > 0) {
-      const { error: logError } = await adminClient
-        .from("attendance_log")
-        .insert(logEntries)
-
-      if (logError) {
-        console.error("Error logging attendance changes:", logError.message)
-      }
+      await db.insert(attendanceLog).values(logEntries)
     }
 
     return NextResponse.json({ data: result })

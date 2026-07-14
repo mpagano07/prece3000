@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { profiles, teacherSchools } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
+import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
@@ -9,45 +13,55 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "user_id es requerido" }, { status: 400 })
     }
 
-    const adminClient = createAdminClient()
-
-    // Unban in Auth (remove 24h ban)
-    const { error: updateError } = await adminClient.auth.admin.updateUserById(user_id, {})
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 })
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
+      return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    // Clear deactivated_at and restore school_id if provided
-    const updates: Record<string, string | null> = { deactivated_at: null }
+    await auth.api.unbanUser({
+      body: { userId: user_id },
+    })
+
+    const updates: Record<string, unknown> = { deactivatedAt: null }
     if (school_id) {
-      updates.school_id = school_id
+      updates.schoolId = school_id
     }
 
-    const { error } = await adminClient
-      .from("profiles")
-      .update(updates)
-      .eq("id", user_id)
+    await db
+      .update(profiles)
+      .set(updates)
+      .where(eq(profiles.id, user_id))
 
-    if (error) {
-      return NextResponse.json({ error: "Error al reactivar usuario" }, { status: 500 })
-    }
-
-    // If teacher, ensure teacher_schools entry exists
     if (school_id) {
-      const { data: profile } = await adminClient
-        .from("profiles")
-        .select("role")
-        .eq("id", user_id)
-        .single()
+      const [profile] = await db
+        .select({ role: profiles.role })
+        .from(profiles)
+        .where(eq(profiles.id, user_id))
+        .limit(1)
 
       if (profile?.role === "teacher") {
-        await adminClient
-          .from("teacher_schools")
-          .upsert(
-            { teacher_id: user_id, school_id, deactivated_at: null },
-            { onConflict: "teacher_id, school_id" }
+        const [existing] = await db
+          .select({ id: teacherSchools.id })
+          .from(teacherSchools)
+          .where(
+            and(
+              eq(teacherSchools.teacherId, user_id),
+              eq(teacherSchools.schoolId, school_id)
+            )
           )
+          .limit(1)
+
+        if (existing) {
+          await db
+            .update(teacherSchools)
+            .set({ deactivatedAt: null })
+            .where(eq(teacherSchools.id, existing.id))
+        } else {
+          await db.insert(teacherSchools).values({
+            teacherId: user_id,
+            schoolId: school_id,
+          })
+        }
       }
     }
 

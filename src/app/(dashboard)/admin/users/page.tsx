@@ -47,8 +47,17 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { ROLES } from "@/lib/constants"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
+import { getAllSchools } from "@/services/schools"
+import {
+  getAllProfiles,
+  getProfilesBySchool,
+  getAllActiveProfiles,
+  getAllPreceptorSchools,
+  getPreceptorSchoolMembers,
+  getTeacherSchoolMembers,
+  getDeactivatedProfiles,
+} from "@/services/users"
 
 const ROLE_COLORS: Record<string, string> = {
   super_admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
@@ -70,29 +79,23 @@ export default function AdminUsersPage() {
   const [newUser, setNewUser] = useState<{
     email: string
     password: string
-    first_name: string
-    last_name: string
+    firstName: string
+    lastName: string
     role: string
-    school_ids: string[]
+    schoolIds: string[]
   }>({
     email: "",
     password: "",
-    first_name: "",
-    last_name: "",
+    firstName: "",
+    lastName: "",
     role: "preceptor",
-    school_ids: [],
+    schoolIds: [],
   })
 
   const { data: schools } = useQuery({
     queryKey: ["schools"],
     queryFn: async () => {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("schools")
-        .select("id, name")
-        .order("name")
-      if (error) throw error
-      return data ?? []
+      return getAllSchools()
     },
     enabled: profile?.role === "super_admin",
   })
@@ -113,46 +116,23 @@ export default function AdminUsersPage() {
   const { data: users, isLoading } = useQuery({
     queryKey: ["users", selectedSchool],
     queryFn: async () => {
-      const supabase = createClient()
-      let preceptorIds: string[] = []
-      let teacherIds: string[] = []
+      let extraIds: string[] = []
 
       if (selectedSchool) {
-        const { data: psData } = await supabase
-          .from("preceptor_schools")
-          .select("preceptor_id")
-          .eq("school_id", selectedSchool)
-        preceptorIds = psData?.map((p) => p.preceptor_id) ?? []
+        const psData = await getPreceptorSchoolMembers(selectedSchool)
+        const preceptorIds = psData.map((p) => p.preceptorId) ?? []
 
-        const { data: tsData } = await supabase
-          .from("teacher_schools")
-          .select("teacher_id")
-          .eq("school_id", selectedSchool)
-        teacherIds = tsData?.map((t) => t.teacher_id) ?? []
+        const tsData = await getTeacherSchoolMembers(selectedSchool)
+        const teacherIds = tsData.map((t) => t.teacherId) ?? []
+
+        extraIds = [...preceptorIds, ...teacherIds]
       }
 
-      let query = supabase
-        .from("profiles")
-        .select("*")
-        .order("role")
-        .order("last_name")
-
       if (selectedSchool) {
-        const extraIds = [...preceptorIds, ...teacherIds]
-        if (extraIds.length > 0) {
-          query = query.is("deactivated_at", null).or(
-            `school_id.eq.${selectedSchool},id.in.(${extraIds.join(",")})`
-          )
-        } else {
-          query = query.eq("school_id", selectedSchool).is("deactivated_at", null)
-        }
+        return getProfilesBySchool(selectedSchool, extraIds)
       } else {
-        query = query.is("deactivated_at", null)
+        return getAllActiveProfiles()
       }
-
-      const { data, error } = await query
-      if (error) throw error
-      return data ?? []
     },
     enabled: profile?.role === "super_admin",
   })
@@ -160,12 +140,7 @@ export default function AdminUsersPage() {
   const { data: preceptorSchools } = useQuery({
     queryKey: ["preceptor-schools"],
     queryFn: async () => {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("preceptor_schools")
-        .select("*")
-      if (error) throw error
-      return data ?? []
+      return getAllPreceptorSchools()
     },
     enabled: profile?.role === "super_admin",
   })
@@ -173,9 +148,9 @@ export default function AdminUsersPage() {
   const preceptorSchoolMap = new Map<string, string[]>()
   if (preceptorSchools) {
     for (const ps of preceptorSchools) {
-      const existing = preceptorSchoolMap.get(ps.preceptor_id) ?? []
-      existing.push(ps.school_id)
-      preceptorSchoolMap.set(ps.preceptor_id, existing)
+      const existing = preceptorSchoolMap.get(ps.preceptorId) ?? []
+      existing.push(ps.schoolId)
+      preceptorSchoolMap.set(ps.preceptorId, existing)
     }
   }
 
@@ -183,12 +158,12 @@ export default function AdminUsersPage() {
     setNewUser((prev) => {
       const isPreceptor = prev.role === "preceptor"
       if (isPreceptor) {
-        const ids = prev.school_ids.includes(schoolId)
-          ? prev.school_ids.filter((id) => id !== schoolId)
-          : [...prev.school_ids, schoolId]
-        return { ...prev, school_ids: ids }
+        const ids = prev.schoolIds.includes(schoolId)
+          ? prev.schoolIds.filter((id) => id !== schoolId)
+          : [...prev.schoolIds, schoolId]
+        return { ...prev, schoolIds: ids }
       } else {
-        return { ...prev, school_ids: prev.school_ids.includes(schoolId) ? [] : [schoolId] }
+        return { ...prev, schoolIds: prev.schoolIds.includes(schoolId) ? [] : [schoolId] }
       }
     })
   }
@@ -201,10 +176,10 @@ export default function AdminUsersPage() {
         body: JSON.stringify({
           email: newUser.email,
           password: newUser.password,
-          first_name: newUser.first_name,
-          last_name: newUser.last_name,
+          first_name: newUser.firstName,
+          last_name: newUser.lastName,
           role: newUser.role,
-          school_ids: newUser.school_ids,
+          school_ids: newUser.schoolIds,
         }),
       })
       const data = await res.json()
@@ -214,7 +189,7 @@ export default function AdminUsersPage() {
     onSuccess: () => {
       toast.success("Usuario creado correctamente")
       setIsCreateOpen(false)
-      setNewUser({ email: "", password: "", first_name: "", last_name: "", role: "preceptor", school_ids: [] })
+      setNewUser({ email: "", password: "", firstName: "", lastName: "", role: "preceptor", schoolIds: [] })
       queryClient.invalidateQueries({ queryKey: ["users"] })
       queryClient.invalidateQueries({ queryKey: ["preceptor-schools"] })
     },
@@ -268,26 +243,17 @@ export default function AdminUsersPage() {
   const { data: deactivatedUsers } = useQuery({
     queryKey: ["deactivated-users"],
     queryFn: async () => {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .neq("role", "super_admin")
-        .order("last_name")
-      if (error) throw error
-      return (data ?? []).filter(
-        (u) => u.deactivated_at !== null || u.school_id === null
-      )
+      return getDeactivatedProfiles()
     },
     enabled: profile?.role === "super_admin",
   })
 
   const [editUser, setEditUser] = useState<{
     id: string
-    first_name: string
-    last_name: string
+    firstName: string
+    lastName: string
     role: string
-    school_ids: string[]
+    schoolIds: string[]
   } | null>(null)
 
   const updateUser = useMutation({
@@ -298,7 +264,7 @@ export default function AdminUsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: editUser.id,
-          school_ids: editUser.school_ids,
+          schoolIds: editUser.schoolIds,
           role: editUser.role,
         }),
       })
@@ -322,12 +288,12 @@ export default function AdminUsersPage() {
       if (!prev) return null
       const isPreceptor = prev.role === "preceptor"
       if (isPreceptor) {
-        const ids = prev.school_ids.includes(schoolId)
-          ? prev.school_ids.filter((id) => id !== schoolId)
-          : [...prev.school_ids, schoolId]
-        return { ...prev, school_ids: ids }
+        const ids = prev.schoolIds.includes(schoolId)
+          ? prev.schoolIds.filter((id) => id !== schoolId)
+          : [...prev.schoolIds, schoolId]
+        return { ...prev, schoolIds: ids }
       } else {
-        return { ...prev, school_ids: prev.school_ids.includes(schoolId) ? [] : [schoolId] }
+        return { ...prev, schoolIds: prev.schoolIds.includes(schoolId) ? [] : [schoolId] }
       }
     })
   }
@@ -388,16 +354,16 @@ export default function AdminUsersPage() {
                 <div className="space-y-2">
                   <Label>Nombre</Label>
                   <Input
-                    value={newUser.first_name}
-                    onChange={(e) => setNewUser({ ...newUser, first_name: e.target.value })}
+                    value={newUser.firstName}
+                    onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
                     placeholder="Nombre"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Apellido</Label>
                   <Input
-                    value={newUser.last_name}
-                    onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })}
+                    value={newUser.lastName}
+                    onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
                     placeholder="Apellido"
                   />
                 </div>
@@ -424,7 +390,7 @@ export default function AdminUsersPage() {
                 <Label>Rol</Label>
                 <Select
                   value={newUser.role}
-                  onValueChange={(v) => setNewUser({ ...newUser, role: v ?? "preceptor", school_ids: [] })}
+                  onValueChange={(v) => setNewUser({ ...newUser, role: v ?? "preceptor", schoolIds: [] })}
                   getLabel={(v) => ROLES.find((r) => r.value === v)?.label ?? v ?? "Seleccionar"}
                 >
                   <SelectTrigger>
@@ -458,7 +424,7 @@ export default function AdminUsersPage() {
                       className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
                     >
                       <Checkbox
-                        checked={newUser.school_ids.includes(s.id)}
+                        checked={newUser.schoolIds.includes(s.id)}
                         onCheckedChange={() => toggleCreateSchool(s.id)}
                       />
                       {s.name}
@@ -476,7 +442,7 @@ export default function AdminUsersPage() {
               </Button>
               <Button
                 onClick={() => createUser.mutate()}
-                disabled={createUser.isPending || !newUser.email || !newUser.password || newUser.school_ids.length === 0}
+                disabled={createUser.isPending || !newUser.email || !newUser.password || newUser.schoolIds.length === 0}
               >
                 {createUser.isPending ? "Creando..." : "Crear Usuario"}
               </Button>
@@ -497,8 +463,8 @@ export default function AdminUsersPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {users.map((u) => {
             const extraSchools = preceptorSchoolMap.get(u.id) ?? []
-            const allSchools = u.school_id
-              ? [u.school_id, ...extraSchools.filter((id) => id !== u.school_id)]
+            const allSchools = u.schoolId
+              ? [u.schoolId, ...extraSchools.filter((id) => id !== u.schoolId)]
               : extraSchools
 
             return (
@@ -508,13 +474,13 @@ export default function AdminUsersPage() {
                     <div className="flex items-center gap-3">
                       <Avatar className="size-10">
                         <AvatarFallback className="text-xs">
-                          {u.first_name?.charAt(0) ?? "?"}
-                          {u.last_name?.charAt(0) ?? ""}
+                          {u.firstName?.charAt(0) ?? "?"}
+                          {u.lastName?.charAt(0) ?? ""}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <CardTitle className="text-sm">
-                          {u.first_name} {u.last_name}
+                          {u.firstName} {u.lastName}
                         </CardTitle>
                         <CardDescription className="flex items-center gap-1 text-xs">
                           <Mail className="size-3" />
@@ -545,10 +511,10 @@ export default function AdminUsersPage() {
                         className="text-xs"
                         onClick={() => setEditUser({
                           id: u.id,
-                          first_name: u.first_name,
-                          last_name: u.last_name,
+                          firstName: u.firstName,
+                          lastName: u.lastName,
                           role: u.role,
-                          school_ids: allSchools,
+                          schoolIds: allSchools,
                         })}
                       >
                         <UserCog /> Editar
@@ -587,13 +553,13 @@ export default function AdminUsersPage() {
                     <div className="flex items-center gap-3">
                       <Avatar className="size-10">
                         <AvatarFallback className="text-xs">
-                          {u.first_name?.charAt(0) ?? "?"}
-                          {u.last_name?.charAt(0) ?? ""}
+                          {u.firstName?.charAt(0) ?? "?"}
+                          {u.lastName?.charAt(0) ?? ""}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <CardTitle className="text-sm">
-                          {u.first_name} {u.last_name}
+                          {u.firstName} {u.lastName}
                         </CardTitle>
                         <CardDescription className="flex items-center gap-1 text-xs">
                           <Mail className="size-3" />
@@ -608,7 +574,7 @@ export default function AdminUsersPage() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs text-muted-foreground mb-2">
-                    {u.school_id ? "Desactivado" : "Desactivado — sin escuela asignada"}
+                    {u.schoolId ? "Desactivado" : "Desactivado — sin escuela asignada"}
                   </p>
                   <Button
                     variant="outline"
@@ -632,7 +598,7 @@ export default function AdminUsersPage() {
           <DialogHeader>
             <DialogTitle>Editar Usuario</DialogTitle>
             <DialogDescription>
-              Gestionar escuelas de {editUser?.first_name} {editUser?.last_name}
+              Gestionar escuelas de {editUser?.firstName} {editUser?.lastName}
               {editUser?.role === "preceptor" ? " (puede seleccionar varias)" : ""}
             </DialogDescription>
           </DialogHeader>
@@ -649,7 +615,7 @@ export default function AdminUsersPage() {
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
                   >
                     <Checkbox
-                      checked={editUser?.school_ids.includes(s.id) ?? false}
+                      checked={editUser?.schoolIds.includes(s.id) ?? false}
                       onCheckedChange={() => toggleEditSchool(s.id)}
                     />
                     {s.name}
@@ -664,7 +630,7 @@ export default function AdminUsersPage() {
             </Button>
             <Button
               onClick={() => updateUser.mutate()}
-              disabled={updateUser.isPending || !editUser?.school_ids.length}
+              disabled={updateUser.isPending || !editUser?.schoolIds.length}
             >
               {updateUser.isPending ? "Guardando..." : "Guardar"}
             </Button>

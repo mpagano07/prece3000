@@ -3,8 +3,10 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import * as XLSX from "xlsx"
-import { createClient } from "@/lib/supabase/client"
-import { StudentService } from "@/services/students"
+import { authClient } from "@/lib/auth-client"
+import { getUserProfile } from "@/services/profiles"
+import { getActiveAcademicYear } from "@/services/schools"
+import { getAllStudentsForImport, getAllStudents, createStudent } from "@/services/students"
 import { PageHeader } from "@/components/shared/page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -151,73 +153,44 @@ export default function ImportStudentsPage() {
   const handleImport = useCallback(async () => {
     setStatus("importing")
     setResult(null)
-    const supabase = createClient()
     const results: ImportResult = { success: 0, errors: [] }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data: sessionData } = await authClient.getSession()
+    const user = sessionData?.user
     if (!user) {
       setError("No autenticado")
       setStatus("preview")
       return
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("school_id")
-      .eq("id", user.id)
-      .maybeSingle()
+    const { profile } = await getUserProfile(user.id)
 
-    if (!profile?.school_id) {
+    if (!profile?.schoolId) {
       setError("Perfil sin institución asociada")
       setStatus("preview")
       return
     }
 
-    const schoolId = profile.school_id
+    const schoolId = profile.schoolId
 
-    const { data: academicYears } = await supabase
-      .from("academic_years")
-      .select("id")
-      .eq("school_id", schoolId)
-      .eq("active", true)
-      .maybeSingle()
+    const academicYear = await getActiveAcademicYear(schoolId)
+    const academicYearId = academicYear?.id ?? null
 
-    const academicYearId = academicYears?.id ?? null
-
-    const { data: allDivisions } = await supabase
-      .from("divisions")
-      .select("id, name, course:courses(name)")
-      .eq("school_id", schoolId)
-
-    const divisionMap = new Map<string, string>()
-    if (allDivisions) {
-      for (const d of allDivisions) {
-        const courseData = d.course as unknown as { name: string } | null
-        const courseName = courseData?.name ?? ""
-        const key = `${courseName.toLowerCase().trim()}|${d.name.toLowerCase().trim()}`
-        divisionMap.set(key, d.id)
-      }
-    }
+    const { divisionMap } = await getAllStudentsForImport(schoolId)
+    const existingStudents = await getAllStudents(schoolId)
+    const existingDnis = new Set(existingStudents.map((s) => s.dni))
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       try {
-        const { data: existing } = await supabase
-          .from("students")
-          .select("id")
-          .eq("school_id", schoolId)
-          .eq("dni", row.dni)
-          .maybeSingle()
-
-        if (existing) {
+        if (existingDnis.has(row.dni)) {
           results.errors.push({ row: i + 1, message: `DNI ${row.dni} ya existe` })
           continue
         }
 
-        let divisionId: string | null = null
         const divKey = `${row.curso.toLowerCase().trim()}|${row.division.toLowerCase().trim()}`
+        let divisionId: string | null = null
+
         if (row.curso && row.division) {
           divisionId = divisionMap.get(divKey) ?? null
           if (!divisionId) {
@@ -229,12 +202,12 @@ export default function ImportStudentsPage() {
           }
         }
 
-        await StudentService.create(supabase, {
-          school_id: schoolId,
-          division_id: divisionId,
-          academic_year_id: academicYearId,
-          first_name: row.nombre,
-          last_name: row.apellido,
+        await createStudent({
+          schoolId: schoolId,
+          divisionId: divisionId,
+          academicYearId: academicYearId,
+          firstName: row.nombre,
+          lastName: row.apellido,
           dni: row.dni,
         })
 

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { profiles, teacherSchools, preceptorSchools } from "@/lib/db/schema"
+import { eq, and, or } from "drizzle-orm"
+import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
@@ -17,18 +20,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "mode debe ser 'search' o 'add'" }, { status: 400 })
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    // Verify caller has access to the school
-    const { data: callerProfile } = await supabase
-      .from("profiles")
-      .select("role, school_id")
-      .eq("id", user.id)
-      .single()
+    const [callerProfile] = await db
+      .select({ role: profiles.role, schoolId: profiles.schoolId })
+      .from(profiles)
+      .where(eq(profiles.id, session.user.id))
+      .limit(1)
 
     if (!callerProfile) {
       return NextResponse.json({ error: "Perfil no encontrado" }, { status: 403 })
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
 
     const isSuperAdmin = callerProfile.role === "super_admin"
     const isSchoolAdmin = callerProfile.role === "school_admin" || callerProfile.role === "director"
-    const hasSchoolAccess = isSuperAdmin || (isSchoolAdmin && callerProfile.school_id === school_id)
+    const hasSchoolAccess = isSuperAdmin || (isSchoolAdmin && callerProfile.schoolId === school_id)
 
     if (!hasSchoolAccess) {
       return NextResponse.json(
@@ -45,18 +46,18 @@ export async function POST(request: Request) {
       )
     }
 
-    const adminClient = createAdminClient()
-
-    // Find the teacher by email
-    const { data: existingProfile, error: profileError } = await adminClient
-      .from("profiles")
-      .select("id, first_name, last_name, email, role, deactivated_at")
-      .eq("email", email)
-      .maybeSingle()
-
-    if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 500 })
-    }
+    const [existingProfile] = await db
+      .select({
+        id: profiles.id,
+        firstName: profiles.firstName,
+        lastName: profiles.lastName,
+        email: profiles.email,
+        role: profiles.role,
+        deactivatedAt: profiles.deactivatedAt,
+      })
+      .from(profiles)
+      .where(eq(profiles.email, email))
+      .limit(1)
 
     if (!existingProfile) {
       return NextResponse.json(
@@ -65,20 +66,23 @@ export async function POST(request: Request) {
       )
     }
 
-    if (existingProfile.deactivated_at) {
+    if (existingProfile.deactivatedAt) {
       return NextResponse.json(
         { error: "El usuario está desactivado globalmente" },
         { status: 400 }
       )
     }
 
-    // Check if already in this school
-    const { data: existingTs } = await adminClient
-      .from("teacher_schools")
-      .select("id")
-      .eq("teacher_id", existingProfile.id)
-      .eq("school_id", school_id)
-      .maybeSingle()
+    const [existingTs] = await db
+      .select({ id: teacherSchools.id })
+      .from(teacherSchools)
+      .where(
+        and(
+          eq(teacherSchools.teacherId, existingProfile.id),
+          eq(teacherSchools.schoolId, school_id)
+        )
+      )
+      .limit(1)
 
     if (mode === "add") {
       if (existingTs) {
@@ -88,24 +92,18 @@ export async function POST(request: Request) {
         )
       }
 
-      const { error: insertError } = await adminClient
-        .from("teacher_schools")
-        .insert({ teacher_id: existingProfile.id, school_id })
-
-      if (insertError) {
-        return NextResponse.json(
-          { error: `Error al asignar docente: ${insertError.message}` },
-          { status: 500 }
-        )
-      }
+      await db.insert(teacherSchools).values({
+        teacherId: existingProfile.id,
+        schoolId: school_id,
+      })
     }
 
     return NextResponse.json({
       success: true,
       teacher: {
         id: existingProfile.id,
-        first_name: existingProfile.first_name,
-        last_name: existingProfile.last_name,
+        first_name: existingProfile.firstName,
+        last_name: existingProfile.lastName,
         email: existingProfile.email,
       },
       already_assigned: !!existingTs,

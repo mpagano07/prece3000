@@ -154,8 +154,8 @@ export default function NewStudentPage() {
     }
     setLoadingDivisions(true)
     try {
-      const { courseService } = await import("@/services/courses")
-      const result = await courseService.getDivisions(v)
+      const { getDivisions } = await import("@/services/courses")
+      const result = await getDivisions(v)
       setDivisions(result)
     } catch {
       setDivisions([])
@@ -166,11 +166,29 @@ export default function NewStudentPage() {
 
   const onSubmit = async (formData: StudentFormValues) => {
     const payload = {
-      ...formData,
-      school_id: school?.id ?? "",
+      firstName: formData.first_name,
+      lastName: formData.last_name,
+      dni: formData.dni,
+      birthDate: formData.birth_date || null,
+      gender: formData.gender || null,
+      nationality: formData.nationality || null,
+      address: formData.address || null,
+      phone: formData.phone || null,
+      email: formData.email || null,
+      bloodType: formData.blood_type || null,
+      healthInsurance: formData.health_insurance || null,
+      healthAffiliateNumber: formData.health_affiliate_number || null,
+      doctorName: formData.doctor_name || null,
+      doctorPhone: formData.doctor_phone || null,
+      allergies: formData.allergies || null,
+      medication: formData.medication || null,
+      restrictions: formData.restrictions || null,
+      divisionId: formData.division_id || null,
+      academicYearId: formData.academic_year_id || null,
+      schoolId: school?.id ?? "",
       status: "active",
       guardians: formData.guardians.filter((g) => g.name),
-      authorized_persons: formData.authorized_persons.filter((p) => p.name),
+      authorizedPersons: formData.authorized_persons.filter((p) => p.name),
     }
     createStudent.mutate(payload as any, {
       onSuccess: () => router.push("/students"),

@@ -28,15 +28,17 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { PageHeader } from "@/components/shared/page-header"
 import { useAuth } from "@/contexts/auth-context"
-import { createClient } from "@/lib/supabase/client"
+import { updateProfile } from "@/services/profiles"
+import { updateSchoolInfo } from "@/services/schools"
+import { authClient } from "@/lib/auth-client"
 import { toast } from "sonner"
 
 export default function SettingsPage() {
   const { user, profile, school } = useAuth()
   const { theme, setTheme } = useTheme()
 
-  const [firstName, setFirstName] = useState(profile?.first_name || "")
-  const [lastName, setLastName] = useState(profile?.last_name || "")
+  const [firstName, setFirstName] = useState(profile?.firstName || "")
+  const [lastName, setLastName] = useState(profile?.lastName || "")
   const [email, setEmail] = useState(profile?.email || "")
   const [phone, setPhone] = useState(profile?.phone || "")
   const [saving, setSaving] = useState(false)
@@ -57,12 +59,7 @@ export default function SettingsPage() {
     if (!profile) return
     setSaving(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("profiles")
-        .update({ first_name: firstName, last_name: lastName, phone })
-        .eq("id", profile.id)
-      if (error) throw error
+      await updateProfile(profile.id, { firstName, lastName, phone })
       toast.success("Perfil actualizado correctamente")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al actualizar perfil")
@@ -76,12 +73,7 @@ export default function SettingsPage() {
     if (!school) return
     setSavingSchool(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("schools")
-        .update({ name: schoolName, address: schoolAddress, phone: schoolPhone, email: schoolEmail })
-        .eq("id", school.id)
-      if (error) throw error
+      await updateSchoolInfo(school.id, { name: schoolName, address: schoolAddress, phone: schoolPhone, email: schoolEmail })
       toast.success("Información de la escuela actualizada")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al actualizar escuela")
@@ -102,8 +94,10 @@ export default function SettingsPage() {
     }
     setChangingPassword(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      const { error } = await authClient.changePassword({
+        newPassword: newPassword,
+        currentPassword: currentPassword,
+      })
       if (error) throw error
       toast.success("Contraseña actualizada correctamente")
       setCurrentPassword("")
@@ -356,8 +350,8 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Miembro desde</span>
               <span className="font-medium">
-                {profile?.created_at
-                  ? new Date(profile.created_at).toLocaleDateString("es-AR")
+                {profile?.createdAt
+                  ? new Date(profile.createdAt).toLocaleDateString("es-AR")
                   : "—"}
               </span>
             </div>

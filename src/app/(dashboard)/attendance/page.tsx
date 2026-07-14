@@ -15,6 +15,13 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
+import { authClient } from "@/lib/auth-client"
+import { getProfilesBySchoolAndRoles } from "@/services/profiles"
+import {
+  getEmployeeAttendanceByDate,
+  hasSchedulesForSchool,
+  getScheduledIdsForDay,
+} from "@/services/attendance"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingScreen } from "@/components/shared/loading-screen"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -78,16 +85,17 @@ export default function EmployeeAttendancePage() {
   const { data: employees, isLoading } = useQuery({
     queryKey: ["employees", school?.id],
     queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("school_id", school!.id)
-        .in("role", ["teacher", "preceptor", "secretary"])
-        .order("role")
-        .order("last_name")
-      if (error) throw error
-      return data ?? []
+      const rows = await getProfilesBySchoolAndRoles(school!.id, ["teacher", "preceptor", "secretary"])
+      return rows.map((r) => ({
+        ...r,
+        first_name: r.firstName,
+        last_name: r.lastName,
+        school_id: r.schoolId,
+        avatar_url: r.avatarUrl,
+        created_at: r.createdAt,
+        updated_at: r.updatedAt,
+        deactivated_at: r.deactivatedAt,
+      }))
     },
     enabled: !!school?.id && canAccess,
   })
@@ -95,33 +103,22 @@ export default function EmployeeAttendancePage() {
   const { data: existingRecords } = useQuery({
     queryKey: ["employee-attendance", school?.id, date],
     queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("employee_attendance")
-        .select("*")
-        .eq("school_id", school!.id)
-        .eq("date", date)
-      if (error) throw error
-      return data ?? []
+      const rows = await getEmployeeAttendanceByDate(school!.id, date)
+      return rows.map((r) => ({
+        ...r,
+        employee_id: r.employeeId,
+        school_id: r.schoolId,
+        created_by: r.createdBy,
+        created_at: r.createdAt,
+        updated_at: r.updatedAt,
+      }))
     },
     enabled: !!school?.id && canAccess,
   })
 
   const { data: hasSchedules } = useQuery({
     queryKey: ["has-schedules", school?.id],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { count: empCount } = await supabase
-        .from("employee_schedules")
-        .select("*", { count: "exact", head: true })
-        .eq("school_id", school!.id)
-      if ((empCount ?? 0) > 0) return true
-      const { count: divCount } = await supabase
-        .from("division_schedules")
-        .select("*", { count: "exact", head: true })
-        .eq("school_id", school!.id)
-      return (divCount ?? 0) > 0
-    },
+    queryFn: () => hasSchedulesForSchool(school!.id),
     enabled: !!school?.id && canAccess,
   })
 
@@ -130,26 +127,7 @@ export default function EmployeeAttendancePage() {
     queryFn: async () => {
       const [y, m, d] = date.split("-").map(Number)
       const dayOfWeek = new Date(y, m - 1, d).getDay()
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-
-      const { data: employeeSched, error: esError } = await supabase
-        .from("employee_schedules")
-        .select("employee_id")
-        .eq("school_id", school!.id)
-        .eq("day_of_week", dayOfWeek)
-      if (esError) throw esError
-
-      const { data: divisionSched, error: dsError } = await supabase
-        .from("division_schedules")
-        .select("teacher_id")
-        .eq("school_id", school!.id)
-        .eq("day_of_week", dayOfWeek)
-      if (dsError) throw dsError
-
-      const ids = new Set<string>()
-      for (const s of employeeSched ?? []) ids.add(s.employee_id)
-      for (const s of divisionSched ?? []) ids.add(s.teacher_id)
-      return ids
+      return getScheduledIdsForDay(school!.id, dayOfWeek)
     },
     enabled: !!school?.id && canAccess,
   })
@@ -166,9 +144,9 @@ export default function EmployeeAttendancePage() {
       setAttendanceMap((prev) => {
         const map = { ...prev }
         for (const emp of employees) {
-          const existing = existingRecords.find((r) => r.employee_id === emp.id)
+          const existing = existingRecords.find((r) => r.employeeId === emp.id)
           if (existing) {
-            map[emp.id] = existing.status
+            map[emp.id] = existing.status as EmployeeAttendanceStatus
           } else if (!(emp.id in map)) {
             map[emp.id] = ""
           }
@@ -180,9 +158,9 @@ export default function EmployeeAttendancePage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error("No autenticado")
+      const sessionResult = await authClient.getSession()
+      if (!sessionResult.data?.user) throw new Error("No autenticado")
+      const userId = sessionResult.data.user.id
 
       const entries = Object.entries(attendanceMap)
         .filter(([, status]) => status !== "")
@@ -191,7 +169,7 @@ export default function EmployeeAttendancePage() {
           employee_id,
           date,
           status: status as EmployeeAttendanceStatus,
-          created_by: user.id,
+          created_by: userId,
         }))
 
       if (entries.length === 0) {
@@ -238,8 +216,8 @@ export default function EmployeeAttendancePage() {
   const filteredEmployees = searchQuery.trim()
     ? scheduledEmployees?.filter(
         (e) =>
-          e.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          e.last_name.toLowerCase().includes(searchQuery.toLowerCase())
+          e.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          e.lastName.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : scheduledEmployees
 
@@ -266,7 +244,7 @@ export default function EmployeeAttendancePage() {
           <CardContent className="pt-3 pb-3">
             <p className="text-xs text-muted-foreground">Presentes</p>
             <p className="text-xl font-bold text-green-600">
-              {existingRecords?.filter((r) => r.status === "present" && scheduledIdSet.has(r.employee_id)).length ?? 0}
+              {existingRecords?.filter((r) => r.status === "present" && scheduledIdSet.has(r.employeeId)).length ?? 0}
             </p>
           </CardContent>
         </Card>
@@ -274,7 +252,7 @@ export default function EmployeeAttendancePage() {
           <CardContent className="pt-3 pb-3">
             <p className="text-xs text-muted-foreground">Ausentes</p>
             <p className="text-xl font-bold text-red-600">
-              {existingRecords?.filter((r) => r.status === "absent" && scheduledIdSet.has(r.employee_id)).length ?? 0}
+              {existingRecords?.filter((r) => r.status === "absent" && scheduledIdSet.has(r.employeeId)).length ?? 0}
             </p>
           </CardContent>
         </Card>
@@ -385,13 +363,13 @@ export default function EmployeeAttendancePage() {
                   <div className="flex items-center gap-3">
                     <Avatar className="size-9">
                       <AvatarFallback className="text-xs">
-                        {emp.first_name?.charAt(0) ?? "?"}
-                        {emp.last_name?.charAt(0) ?? ""}
+                        {emp.firstName?.charAt(0) ?? "?"}
+                        {emp.lastName?.charAt(0) ?? ""}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
                       <CardTitle className="text-sm truncate">
-                        {emp.last_name}, {emp.first_name}
+                        {emp.lastName}, {emp.firstName}
                       </CardTitle>
                       <p className="text-xs text-muted-foreground">{roleLabel}</p>
                     </div>

@@ -100,13 +100,13 @@ export default function DocumentsPage() {
                 key={s.id}
                 className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors"
                 onClick={() => {
-                  const name = `${s.first_name} ${s.last_name}`
+                  const name = `${s.firstName} ${s.lastName}`
                   setSelectedStudentId(s.id)
                   setSelectedStudentName(name)
                   setStudentSearch(name)
                 }}
               >
-                {s.first_name} {s.last_name} - {s.dni}
+                {s.firstName} {s.lastName} - {s.dni}
               </button>
             ))}
           </div>
@@ -148,12 +148,12 @@ export default function DocumentsPage() {
                   <div
                     className="relative aspect-video cursor-pointer bg-muted"
                     onClick={() =>
-                      setPreviewDoc({ name: doc.name, url: doc.file_url, type: "image" })
+                      setPreviewDoc({ name: doc.name, url: doc.fileUrl, type: "image" })
                     }
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={doc.file_url}
+                      src={doc.fileUrl}
                       alt={doc.name}
                       className="size-full object-cover"
                     />
@@ -176,7 +176,7 @@ export default function DocumentsPage() {
                       <div className="min-w-0">
                         <CardTitle className="truncate text-sm">{doc.name}</CardTitle>
                         <p className="text-xs text-muted-foreground">
-                          {formatDate(doc.uploaded_at)}
+                          {doc.uploadedAt ? formatDate(doc.uploadedAt) : ""}
                         </p>
                       </div>
                     </div>
@@ -191,13 +191,13 @@ export default function DocumentsPage() {
                       variant="outline"
                       size="sm"
                       onClick={() =>
-                        setPreviewDoc({ name: doc.name, url: doc.file_url, type: isImage ? "image" : "pdf" })
+                        setPreviewDoc({ name: doc.name, url: doc.fileUrl, type: isImage ? "image" : "pdf" })
                       }
                     >
                       <Eye className="size-3.5" />
                       Ver
                     </Button>
-                    <a href={doc.file_url} target="_blank" rel="noopener noreferrer" download>
+                    <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" download>
                       <Button variant="outline" size="sm">
                         <Download className="size-3.5" />
                         Descargar

@@ -32,7 +32,8 @@ import {
   useMarkBulkAttendance,
 } from "@/hooks/use-attendance"
 import type { Attendance, AttendanceStatus } from "@/types/database"
-import { courseService } from "@/services/courses"
+import { deleteCourse, deleteDivision, getSubjectsBySchool } from "@/services/courses"
+import { getProfilesBySchoolAndRole } from "@/services/profiles"
 import { useActiveAcademicYear } from "@/hooks/use-academic-years"
 import { usePreceptors } from "@/hooks/use-preceptors"
 import { useStudents } from "@/hooks/use-students"
@@ -105,33 +106,13 @@ export default function CoursesPage() {
 
   const { data: allSubjects } = useQuery({
     queryKey: ["subjects", school?.id, activeAcademicYear?.id],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("subjects")
-        .select("*")
-        .eq("school_id", school!.id)
-        .eq("academic_year_id", activeAcademicYear!.id)
-        .order("name")
-      if (error) throw error
-      return (data ?? []) as import("@/types/database").Subject[]
-    },
+    queryFn: () => getSubjectsBySchool(school!.id, activeAcademicYear!.id) as unknown as Promise<import("@/types/database").Subject[]>,
     enabled: !!school?.id && !!activeAcademicYear?.id,
   })
 
   const { data: allTeachers, isLoading: teachersLoading } = useQuery({
     queryKey: ["school-teachers", school?.id],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("school_id", school!.id)
-        .eq("role", "teacher")
-        .order("last_name")
-      if (error) throw error
-      return (data ?? []) as import("@/types/database").Profile[]
-    },
+    queryFn: () => getProfilesBySchoolAndRole(school!.id, "teacher") as unknown as Promise<import("@/types/database").Profile[]>,
     enabled: !!school?.id,
   })
 
@@ -148,7 +129,7 @@ export default function CoursesPage() {
     profile?.role === "director"
 
   const deleteCourseMutation = useMutation({
-    mutationFn: (id: string) => courseService.delete(id),
+    mutationFn: (id: string) => deleteCourse(id),
     onSuccess: () => {
       toast.success("Curso eliminado correctamente")
       queryClient.invalidateQueries({ queryKey: ["courses", school?.id] })
@@ -161,7 +142,7 @@ export default function CoursesPage() {
   })
 
   const deleteDivisionMutation = useMutation({
-    mutationFn: (id: string) => courseService.deleteDivision(id),
+    mutationFn: (id: string) => deleteDivision(id),
     onSuccess: () => {
       toast.success("División eliminada correctamente")
       queryClient.invalidateQueries({ queryKey: ["courses", school?.id] })
@@ -185,20 +166,20 @@ export default function CoursesPage() {
     }
     createCourse.mutate(
       {
-        school_id: school.id,
+        schoolId: school.id,
         name: newCourseName.trim(),
-        academic_year_id: activeAcademicYear.id,
+        academicYearId: activeAcademicYear.id,
       },
       {
         onSuccess: (course) => {
           if (newCourseDivisionName.trim()) {
             createDivision.mutate({
-              school_id: school!.id,
-              course_id: course.id,
+              schoolId: school!.id,
+              courseId: course.id,
               name: newCourseDivisionName.trim(),
               shift: newCourseDivisionShift || null,
-              preceptor_id: newCourseDivisionPreceptor === " " ? null : (newCourseDivisionPreceptor || null),
-              academic_year_id: activeAcademicYear!.id,
+              preceptorId: newCourseDivisionPreceptor === " " ? null : (newCourseDivisionPreceptor || null),
+              academicYearId: activeAcademicYear!.id,
             })
           }
           setNewCourseName("")
@@ -223,11 +204,11 @@ export default function CoursesPage() {
     }
     createDivision.mutate(
       {
-        school_id: school.id,
-        course_id: courseForDivision,
+        schoolId: school.id,
+        courseId: courseForDivision,
         name: newDivisionName.trim(),
         shift: newDivisionShift || null,
-        academic_year_id: activeAcademicYear.id,
+        academicYearId: activeAcademicYear.id,
       },
       {
         onSuccess: () => {
@@ -255,7 +236,7 @@ export default function CoursesPage() {
   const handlePreceptorChange = (divisionId: string, preceptorId: string) => {
     updateDivision.mutate({
       id: divisionId,
-      data: { preceptor_id: preceptorId === " " ? null : preceptorId },
+      data: { preceptorId: preceptorId === " " ? null : preceptorId },
     })
   }
 
@@ -399,7 +380,7 @@ export default function CoursesPage() {
                   <SelectItem value=" ">Sin preceptor</SelectItem>
                   {preceptors?.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.last_name}, {p.first_name}
+                      {p.lastName}, {p.firstName}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -594,7 +575,7 @@ function CourseCard({
         ) : (
           <div className="space-y-1.5">
             {divisions.map((div) => {
-              const preceptor = preceptors.find((p) => p.id === div.preceptor_id)
+              const preceptor = preceptors.find((p) => p.id === div.preceptorId)
               return (
                 <div
                   key={div.id}
@@ -615,7 +596,7 @@ function CourseCard({
                   <div className="flex items-center gap-1.5 shrink-0">
                     {canManage && preceptors.length > 0 ? (
                       <Select
-                        value={div.preceptor_id ?? ""}
+                        value={div.preceptorId ?? ""}
                         onValueChange={(v) => onPreceptorChange(div.id, v)}
                       >
                         <SelectTrigger className="h-6 w-auto gap-1 text-[10px]">
@@ -626,7 +607,7 @@ function CourseCard({
                           <SelectItem value=" ">Sin preceptor</SelectItem>
                           {preceptors.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
-                              {p.last_name}, {p.first_name}
+                              {p.lastName}, {p.firstName}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -634,7 +615,7 @@ function CourseCard({
                     ) : preceptor ? (
                       <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
                         <UserRound className="mr-0.5 inline size-2.5" />
-                        {preceptor.last_name}, {preceptor.first_name}
+                        {preceptor.lastName}, {preceptor.firstName}
                       </span>
                     ) : (
                       <span className="text-[10px] text-muted-foreground/50">
@@ -766,7 +747,7 @@ function AttendanceDialog({
     const map = new Map<string, Attendance>()
     if (attendanceRecords) {
       for (const record of attendanceRecords) {
-        map.set(record.student_id, record)
+        map.set(record.studentId, record)
       }
     }
     return map
@@ -778,8 +759,8 @@ function AttendanceDialog({
       const a = attendanceMap.get(s.id)
       return {
         studentId: s.id,
-        firstName: s.first_name,
-        lastName: s.last_name,
+        firstName: s.firstName,
+        lastName: s.lastName,
         dni: s.dni,
         status: a?.status ?? null,
         observation: a?.observation ?? null,
@@ -807,8 +788,8 @@ function AttendanceDialog({
     setPendingStudents((prev) => new Set(prev).add(studentId))
     markAttendance.mutate(
       {
-        student_id: studentId,
-        division_id: divisionId,
+        studentId: studentId,
+        divisionId: divisionId,
         date: attendanceDate,
         status,
       },
@@ -826,14 +807,14 @@ function AttendanceDialog({
 
   const handleMarkAllPresent = () => {
     if (!students || students.length === 0) return
-    const studentIds = new Set(students.map((s) => s.id))
-    setPendingStudents((prev) => new Set([...prev, ...studentIds]))
+    const studentIds = new Set<string>(students.map((s) => s.id))
+    setPendingStudents((prev) => new Set<string>([...prev, ...studentIds]))
     markBulkAttendance.mutate(
       {
         divisionId,
         date: attendanceDate,
         records: students.map((s) => ({
-          student_id: s.id,
+          studentId: s.id,
           status: "present" as AttendanceStatus,
         })),
       },
@@ -858,8 +839,8 @@ function AttendanceDialog({
     setPendingStudents((prev) => new Set(prev).add(studentId))
     markAttendance.mutate(
       {
-        student_id: studentId,
-        division_id: divisionId,
+        studentId: studentId,
+        divisionId: divisionId,
         date: attendanceDate,
         status: record.status,
         observation,

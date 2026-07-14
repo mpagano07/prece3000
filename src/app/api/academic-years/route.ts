@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { db } from "@/lib/db"
+import { auth } from "@/lib/auth"
+import { academicYears } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
+import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
@@ -13,48 +16,29 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
+    const [existingActive] = await db
+      .select({ id: academicYears.id })
+      .from(academicYears)
+      .where(and(eq(academicYears.schoolId, school_id), eq(academicYears.active, true)))
+      .limit(1)
 
-    const { data: existingActive, error: checkError } = await adminClient
-      .from("academic_years")
-      .select("id")
-      .eq("school_id", school_id)
-      .eq("active", true)
-      .maybeSingle()
-
-    if (checkError) {
-      return NextResponse.json(
-        { error: `Error al verificar año activo: ${checkError.message}` },
-        { status: 500 }
-      )
-    }
-
-    const { data, error } = await adminClient
-      .from("academic_years")
-      .insert({
-        school_id,
+    const rows = await db
+      .insert(academicYears)
+      .values({
+        schoolId: school_id,
         name,
-        start_date,
-        end_date,
+        startDate: start_date,
+        endDate: end_date,
         active: !existingActive,
       })
-      .select()
-      .single()
+      .returning()
 
-    if (error) {
-      return NextResponse.json(
-        { error: `Error al crear año académico: ${error.message}` },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ success: true, academic_year: data })
+    return NextResponse.json({ success: true, academic_year: rows[0] })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Error interno" },
@@ -68,64 +52,44 @@ export async function PATCH(request: Request) {
     const { id, active, name, start_date, end_date } = await request.json()
 
     if (!id) {
-      return NextResponse.json(
-        { error: "Se requiere id" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Se requiere id" }, { status: 400 })
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
-
     if (active === true) {
-      const { data: ay } = await adminClient
-        .from("academic_years")
-        .select("school_id")
-        .eq("id", id)
-        .single()
+      const [ay] = await db
+        .select({ schoolId: academicYears.schoolId })
+        .from(academicYears)
+        .where(eq(academicYears.id, id))
+        .limit(1)
 
       if (ay) {
-        const { error: deactivateError } = await adminClient
-          .from("academic_years")
-          .update({ active: false })
-          .eq("school_id", ay.school_id)
-          .eq("active", true)
-
-        if (deactivateError) {
-          return NextResponse.json(
-            { error: `Error al desactivar años anteriores: ${deactivateError.message}` },
-            { status: 500 }
+        await db
+          .update(academicYears)
+          .set({ active: false })
+          .where(
+            and(eq(academicYears.schoolId, ay.schoolId), eq(academicYears.active, true))
           )
-        }
       }
     }
 
     const updateData: Record<string, unknown> = {}
     if (active !== undefined) updateData.active = active
     if (name !== undefined) updateData.name = name
-    if (start_date !== undefined) updateData.start_date = start_date
-    if (end_date !== undefined) updateData.end_date = end_date
+    if (start_date !== undefined) updateData.startDate = start_date
+    if (end_date !== undefined) updateData.endDate = end_date
 
-    const { data, error } = await adminClient
-      .from("academic_years")
-      .update(updateData)
-      .eq("id", id)
-      .select()
-      .single()
+    const rows = await db
+      .update(academicYears)
+      .set(updateData)
+      .where(eq(academicYears.id, id))
+      .returning()
 
-    if (error) {
-      return NextResponse.json(
-        { error: `Error al actualizar año académico: ${error.message}` },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ success: true, academic_year: data })
+    return NextResponse.json({ success: true, academic_year: rows[0] })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Error interno" },
@@ -139,30 +103,15 @@ export async function DELETE(request: Request) {
     const { id } = await request.json()
 
     if (!id) {
-      return NextResponse.json(
-        { error: "Se requiere id" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Se requiere id" }, { status: 400 })
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const session = await auth.api.getSession({ headers: await headers() })
+    if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
-    const { error } = await adminClient
-      .from("academic_years")
-      .delete()
-      .eq("id", id)
-
-    if (error) {
-      return NextResponse.json(
-        { error: `Error al eliminar año académico: ${error.message}` },
-        { status: 500 }
-      )
-    }
+    await db.delete(academicYears).where(eq(academicYears.id, id))
 
     return NextResponse.json({ success: true })
   } catch (err) {

@@ -8,14 +8,13 @@ import {
   useCallback,
   type ReactNode,
 } from "react"
-import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
+import { authClient } from "@/lib/auth-client"
 import type { Profile, School } from "@/types/database"
 import { useRouter } from "next/navigation"
-import { setActiveSchoolId } from "@/lib/active-school"
+import { setActiveSchoolId } from "@/lib/active-school-client"
 
 interface AuthContextValue {
-  user: User | null
+  user: { id: string; email: string; name: string } | null
   profile: Profile | null
   school: School | null
   availableSchools: School[]
@@ -30,210 +29,139 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<{ id: string; email: string; name: string } | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [school, setSchool] = useState<School | null>(null)
   const [availableSchools, setAvailableSchools] = useState<School[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
-  const [supabase] = useState(() => createClient())
 
   const fetchProfile = useCallback(async (userId: string) => {
-    const { data: profileData, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle()
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      })
+      if (!res.ok) {
+        setProfile(null)
+        setSchool(null)
+        setAvailableSchools([])
+        setActiveSchoolId(null)
+        return
+      }
+      const { profile: profileData, schools: schoolsData } = await res.json()
+      if (!profileData) {
+        setProfile(null)
+        setSchool(null)
+        setAvailableSchools([])
+        setActiveSchoolId(null)
+        return
+      }
 
-    if (!error && profileData) {
       setProfile(profileData)
       setAvailableSchools([])
 
       if (profileData.role === "super_admin") {
-        const { data: schoolsData } = await supabase
-          .from("schools")
-          .select("*")
-          .eq("active", true)
-          .order("name")
         const schools = schoolsData ?? []
         setAvailableSchools(schools)
 
         const storedId = localStorage.getItem("activeSchoolId")
         const target = storedId
-          ? schools.find((s) => s.id === storedId)
+          ? schools.find((s: School) => s.id === storedId)
           : schools[0]
         setSchool(target ?? null)
         setActiveSchoolId(target?.id ?? null)
-      } else if (profileData.role === "preceptor") {
-        const schoolIds: string[] = []
-        if (profileData.school_id) schoolIds.push(profileData.school_id)
+      } else if (profileData.role === "preceptor" || profileData.role === "teacher") {
+        const schools = schoolsData ?? []
+        setAvailableSchools(schools)
 
-        const { data: extraSchools } = await supabase
-          .from("preceptor_schools")
-          .select("school_id")
-          .eq("preceptor_id", userId)
-
-        if (extraSchools) {
-          for (const es of extraSchools) {
-            if (!schoolIds.includes(es.school_id)) {
-              schoolIds.push(es.school_id)
-            }
-          }
-        }
-
-        if (schoolIds.length > 0) {
-          const { data: schoolsData } = await supabase
-            .from("schools")
-            .select("*")
-            .in("id", schoolIds)
-
-          const schools = schoolsData ?? []
-          setAvailableSchools(schools)
-
-          const storedId = localStorage.getItem("activeSchoolId")
-          const target = storedId
-            ? schools.find((s) => s.id === storedId)
-            : schools[0]
-          setSchool(target ?? null)
-          setActiveSchoolId(target?.id ?? null)
-        } else {
-          setSchool(null)
-          setActiveSchoolId(null)
-        }
-      } else if (profileData.role === "teacher") {
-        const schoolIds: string[] = []
-        if (profileData.school_id) schoolIds.push(profileData.school_id)
-
-        const { data: extraSchools } = await supabase
-          .from("teacher_schools")
-          .select("school_id")
-          .eq("teacher_id", userId)
-
-        if (extraSchools) {
-          for (const es of extraSchools) {
-            if (!schoolIds.includes(es.school_id)) {
-              schoolIds.push(es.school_id)
-            }
-          }
-        }
-
-        if (schoolIds.length > 0) {
-          const { data: schoolsData } = await supabase
-            .from("schools")
-            .select("*")
-            .in("id", schoolIds)
-
-          const schools = schoolsData ?? []
-          setAvailableSchools(schools)
-
-          const storedId = localStorage.getItem("activeSchoolId")
-          const target = storedId
-            ? schools.find((s) => s.id === storedId)
-            : schools[0]
-          setSchool(target ?? null)
-          setActiveSchoolId(target?.id ?? null)
-        } else {
-          setSchool(null)
-          setActiveSchoolId(null)
-        }
-      } else if (profileData.school_id) {
-        const { data: schoolData } = await supabase
-          .from("schools")
-          .select("*")
-          .eq("id", profileData.school_id)
-          .maybeSingle()
-        const s = schoolData ?? null
+        const storedId = localStorage.getItem("activeSchoolId")
+        const target = storedId
+          ? schools.find((s: School) => s.id === storedId)
+          : schools[0]
+        setSchool(target ?? null)
+        setActiveSchoolId(target?.id ?? null)
+      } else if (profileData.schoolId) {
+        const schools = schoolsData ?? []
+        const s = schools.find((sc: School) => sc.id === profileData.schoolId) ?? null
         setSchool(s)
         setActiveSchoolId(s?.id ?? null)
       } else {
         setSchool(null)
         setActiveSchoolId(null)
       }
-    } else {
+    } catch {
       setProfile(null)
       setSchool(null)
       setAvailableSchools([])
       setActiveSchoolId(null)
     }
-  }, [supabase])
+  }, [])
 
   useEffect(() => {
     let mounted = true
 
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data: session } = await authClient.getSession()
 
       if (!mounted) return
 
-      if (session) {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setUser(user)
-          await fetchProfile(user.id)
-        }
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email ?? "",
+          name: session.user.name ?? "",
+        })
+        await fetchProfile(session.user.id)
       }
       setIsLoading(false)
     }
 
     init()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event) => {
-        if (!mounted) return
-
-        if (event === "SIGNED_OUT") {
-          setUser(null)
-          setProfile(null)
-          setSchool(null)
-          setIsLoading(false)
-          router.push("/auth")
-          return
-        }
-
-        if (event === "SIGNED_IN") {
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            setUser(user)
-            await fetchProfile(user.id)
-          }
-          return
-        }
-
-        if (event === "TOKEN_REFRESHED") {
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            setUser(user)
-            await fetchProfile(user.id)
-          }
-          router.refresh()
-        }
-      }
-    )
-
     return () => {
       mounted = false
-      subscription.unsubscribe()
     }
-  }, [supabase, fetchProfile, router])
+  }, [fetchProfile])
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error, data } = await authClient.signIn.email({
       email,
       password,
     })
-    if (error) throw error
+    if (error) throw new Error(error.message ?? "Error signing in")
+    if (data?.user?.id) {
+      setUser({
+        id: data.user.id,
+        email: data.user.email ?? "",
+        name: data.user.name ?? "",
+      })
+      await fetchProfile(data.user.id)
+    }
   }
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/update-password`,
+    const res = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        redirectTo: `${window.location.origin}/auth/update-password`,
+      }),
     })
-    if (error) throw error
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message ?? "Error sending reset email")
   }
 
   const updatePassword = async (password: string) => {
-    const { error } = await supabase.auth.updateUser({ password })
-    if (error) throw error
+    const res = await fetch("/api/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword: password }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message ?? "Error updating password")
   }
 
   const setActiveSchool = useCallback((s: School | null) => {
@@ -249,7 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     setActiveSchoolId(null)
     localStorage.removeItem("activeSchoolId")
-    await supabase.auth.signOut()
+    await authClient.signOut()
+    router.push("/auth")
   }
 
   return (

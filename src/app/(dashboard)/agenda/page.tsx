@@ -18,8 +18,6 @@ import {
   endOfMonth,
   isWithinInterval,
   isAfter,
-  isBefore,
-  parseISO,
 } from "date-fns"
 import { es } from "date-fns/locale"
 import { Button } from "@/components/ui/button"
@@ -57,12 +55,16 @@ import {
 import { PageHeader } from "@/components/shared/page-header"
 import { EmptyState } from "@/components/shared/empty-state"
 import { useAuth } from "@/contexts/auth-context"
-import { createClient } from "@/lib/supabase/client"
+import { getAppointments, createAppointment, toggleAppointment } from "@/services/appointments"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { formatDate, formatDateTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import type { Appointment } from "@/types/database"
+
+type AppointmentWithCompletion = Appointment
+
+
 
 const TABS = [
   { value: "pending", label: "Pendientes" },
@@ -79,52 +81,6 @@ const APPOINTMENT_TYPES = [
   { value: "other", label: "Otro" },
 ]
 
-async function fetchAppointments(userId: string) {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("*")
-    .eq("user_id", userId)
-    .order("start_date", { ascending: true })
-  if (error) throw error
-  return data ?? []
-}
-
-async function createAppointment(data: {
-  school_id: string
-  user_id: string
-  title: string
-  description: string | null
-  start_date: string
-  end_date: string | null
-  type: string
-}) {
-  const supabase = createClient()
-  const { data: appointment, error } = await supabase
-    .from("appointments")
-    .insert(data)
-    .select()
-    .single()
-  if (error) throw error
-  return appointment
-}
-
-async function toggleAppointment(id: string) {
-  const supabase = createClient()
-  const { data: current } = await supabase
-    .from("appointments")
-    .select("*")
-    .eq("id", id)
-    .single()
-
-  const { error } = await supabase
-    .from("appointments")
-    .update({ completed: current ? !current.completed : true })
-    .eq("id", id)
-
-  if (error) throw error
-}
-
 export default function AgendaPage() {
   const { profile, school } = useAuth()
   const queryClient = useQueryClient()
@@ -133,7 +89,7 @@ export default function AgendaPage() {
 
   const { data: appointments, isLoading } = useQuery({
     queryKey: ["appointments", profile?.id],
-    queryFn: () => fetchAppointments(profile?.id ?? ""),
+    queryFn: () => getAppointments(profile?.id ?? ""),
     enabled: !!profile?.id,
   })
 
@@ -162,35 +118,36 @@ export default function AgendaPage() {
   const filtered = useMemo(() => {
     if (!appointments) return []
     const now = new Date()
+    const items = appointments as AppointmentWithCompletion[]
 
     switch (tab) {
       case "pending":
-        return appointments.filter(
-          (a) => !(a as any).completed && isAfter(parseISO(a.start_date), now)
+        return items.filter(
+          (a) => !a.completed && isAfter(new Date(a.startDate), now)
         )
       case "today":
-        return appointments.filter((a) =>
-          isWithinInterval(parseISO(a.start_date), {
+        return items.filter((a) =>
+          isWithinInterval(new Date(a.startDate), {
             start: startOfDay(now),
             end: endOfDay(now),
           })
         )
       case "week":
-        return appointments.filter((a) =>
-          isWithinInterval(parseISO(a.start_date), {
+        return items.filter((a) =>
+          isWithinInterval(new Date(a.startDate), {
             start: startOfWeek(now, { locale: es }),
             end: endOfWeek(now, { locale: es }),
           })
         )
       case "month":
-        return appointments.filter((a) =>
-          isWithinInterval(parseISO(a.start_date), {
+        return items.filter((a) =>
+          isWithinInterval(new Date(a.startDate), {
             start: startOfMonth(now),
             end: endOfMonth(now),
           })
         )
       default:
-        return appointments
+        return items
     }
   }, [appointments, tab])
 
@@ -206,12 +163,12 @@ export default function AgendaPage() {
                 const form = e.currentTarget
                 const data = new FormData(form)
                 createMutation.mutate({
-                  school_id: school?.id ?? "",
-                  user_id: profile?.id ?? "",
+                  schoolId: school?.id ?? "",
+                  userId: profile?.id ?? "",
                   title: data.get("title") as string,
                   description: (data.get("description") as string) || null,
-                  start_date: new Date(data.get("start_date") as string).toISOString(),
-                  end_date: data.get("end_date")
+                  startDate: new Date(data.get("start_date") as string).toISOString(),
+                  endDate: data.get("end_date")
                     ? new Date(data.get("end_date") as string).toISOString()
                     : null,
                   type: (data.get("type") as string) || "other",
@@ -323,22 +280,24 @@ export default function AgendaPage() {
       )}
 
       <div className="grid gap-2">
-        {filtered.map((appointment) => (
+        {filtered.map((appointment) => {
+          const appt = appointment as AppointmentWithCompletion
+          return (
           <Card
-            key={appointment.id}
+            key={appt.id}
             className={cn(
               "transition-colors",
-              (appointment as any).completed && "opacity-60"
+              appt.completed && "opacity-60"
             )}
           >
             <CardHeader>
               <div className="flex items-start gap-3">
                 <button
                   type="button"
-                  onClick={() => toggleMutation.mutate(appointment.id)}
+                  onClick={() => toggleMutation.mutate(appt.id)}
                   className="mt-0.5 shrink-0"
                 >
-                  {(appointment as any).completed ? (
+                  {appt.completed ? (
                     <CheckCircle2 className="size-5 text-green-500" />
                   ) : (
                     <Circle className="size-5 text-muted-foreground hover:text-primary transition-colors" />
@@ -350,20 +309,20 @@ export default function AgendaPage() {
                       <CardTitle
                         className={cn(
                           "text-sm",
-                          (appointment as any).completed && "line-through"
+                          appt.completed && "line-through"
                         )}
                       >
-                        {appointment.title}
+                        {appt.title}
                       </CardTitle>
-                      {appointment.description && (
+                      {appt.description && (
                         <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
-                          {appointment.description}
+                          {appt.description}
                         </p>
                       )}
                     </div>
                     <Badge variant="secondary" className="shrink-0">
-                      {APPOINTMENT_TYPES.find((t) => t.value === appointment.type)
-                        ?.label || appointment.type}
+                      {APPOINTMENT_TYPES.find((t) => t.value === appt.type)
+                        ?.label || appt.type}
                     </Badge>
                   </div>
                 </div>
@@ -372,14 +331,14 @@ export default function AgendaPage() {
             <CardContent className="pt-0">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Clock className="size-3.5" />
-                {formatDateTime(appointment.start_date)}
-                {appointment.end_date && (
-                  <> - {formatDateTime(appointment.end_date)}</>
+                {formatDateTime(appt.startDate)}
+                {appt.endDate && (
+                  <> - {formatDateTime(appt.endDate)}</>
                 )}
               </div>
             </CardContent>
           </Card>
-        ))}
+        )})}
       </div>
     </div>
   )

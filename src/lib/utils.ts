@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { SupabaseClient } from "@supabase/supabase-js"
+import { db } from "@/lib/db"
+import { auditLog } from "@/lib/db/schema"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -37,7 +38,7 @@ export function getInitials(firstName: string, lastName: string): string {
 }
 
 export async function createAuditLog(
-  supabase: SupabaseClient,
+  _db: unknown,
   schoolId: string,
   userId: string,
   action: string,
@@ -46,17 +47,17 @@ export async function createAuditLog(
   oldValues: Record<string, unknown> | null,
   newValues: Record<string, unknown> | null
 ) {
-  const { error } = await supabase.from("audit_log").insert({
-    school_id: schoolId,
-    user_id: userId,
-    action,
-    table_name: tableName,
-    record_id: recordId,
-    old_values: oldValues,
-    new_values: newValues,
-  })
-
-  if (error) {
+  try {
+    await db.insert(auditLog).values({
+      schoolId,
+      userId,
+      action,
+      tableName,
+      recordId,
+      oldValues,
+      newValues,
+    })
+  } catch (error) {
     console.error("Failed to create audit log:", error)
   }
 }

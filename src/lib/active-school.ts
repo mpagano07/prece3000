@@ -1,23 +1,24 @@
-const STORAGE_KEY = "activeSchoolId"
+"use server"
 
-export function getActiveSchoolId(): string | null {
-  if (typeof window === "undefined") return null
-  try {
-    return localStorage.getItem(STORAGE_KEY)
-  } catch {
-    return null
-  }
+import { cookies } from "next/headers"
+
+const COOKIE_KEY = "activeSchoolId"
+
+export async function getActiveSchoolId(): Promise<string | null> {
+  const cookieStore = await cookies()
+  return cookieStore.get(COOKIE_KEY)?.value ?? null
 }
 
-export function setActiveSchoolId(id: string | null) {
-  if (typeof window === "undefined") return
-  try {
-    if (id) {
-      localStorage.setItem(STORAGE_KEY, id)
-    } else {
-      localStorage.removeItem(STORAGE_KEY)
-    }
-  } catch {
-    // Ignore storage errors
+export async function setActiveSchoolId(id: string | null) {
+  const cookieStore = await cookies()
+  if (id) {
+    cookieStore.set(COOKIE_KEY, id, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+    })
+  } else {
+    cookieStore.delete(COOKIE_KEY)
   }
 }

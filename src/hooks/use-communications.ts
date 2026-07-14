@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { communicationService } from "@/services/communications"
+import { getCommunicationsByStudent, createCommunication } from "@/services/communications"
 import { useAuth } from "@/contexts/auth-context"
 import type { Communication } from "@/types/database"
 
@@ -9,7 +9,7 @@ export function useStudentCommunications(studentId: string) {
 
   return useQuery({
     queryKey: ["communications", school?.id, studentId],
-    queryFn: () => communicationService.getStudentCommunications(studentId),
+    queryFn: () => getCommunicationsByStudent(studentId),
     enabled: !!school?.id && !!studentId,
   })
 }
@@ -20,12 +20,17 @@ export function useCreateCommunication() {
 
   return useMutation({
     mutationFn: (
-      data: Omit<Communication, "id" | "sent_at">
-    ) => communicationService.create(data),
+      data: Omit<Communication, "id" | "sentAt">
+    ) => createCommunication(data.schoolId, {
+      studentId: data.studentId,
+      type: data.type,
+      message: data.message,
+      sentTo: data.sentTo,
+    }),
     onSuccess: (_, variables) => {
       toast.success("Comunicación registrada correctamente")
       queryClient.invalidateQueries({
-        queryKey: ["communications", school?.id, variables.student_id],
+        queryKey: ["communications", school?.id, variables.studentId],
       })
       queryClient.invalidateQueries({ queryKey: ["communications", school?.id] })
     },

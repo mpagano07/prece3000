@@ -1,345 +1,372 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/client"
+"use server"
+
+import { db } from "@/lib/db"
+import { attendance, attendanceLog, students, employeeSchedules, divisionSchedules, employeeAttendance, profiles } from "@/lib/db/schema"
+import { eq, and, gte, lte, inArray, sql } from "drizzle-orm"
+import { format } from "date-fns"
 import type { Attendance, AttendanceStatus } from "@/types/database"
-import { format, startOfMonth, endOfMonth } from "date-fns"
-import { getActiveSchoolId } from "@/lib/active-school"
 
-export class AttendanceService {
-  static async getByDivisionAndDate(
-    supabase: SupabaseClient,
-    divisionId: string,
-    date: string,
-    schoolId: string
-  ): Promise<Attendance[]> {
-    const { data, error } = await supabase
-      .from("attendance")
-      .select("*, students(first_name, last_name, dni)")
-      .eq("division_id", divisionId)
-      .eq("date", date)
-      .eq("school_id", schoolId)
-      .order("created_at", { ascending: true })
+export async function getByDivisionAndDate(
+  divisionId: string,
+  date: string,
+  schoolId: string
+): Promise<Attendance[]> {
+  return db.query.attendance.findMany({
+    where: and(
+      eq(attendance.divisionId, divisionId),
+      eq(attendance.date, date),
+      eq(attendance.schoolId, schoolId)
+    ),
+    orderBy: (t, { asc }) => [asc(t.createdAt)],
+  }) as Promise<Attendance[]>
+}
 
-    if (error) throw new Error(`Error fetching attendance: ${error.message}`)
-    return data ?? []
-  }
+export async function markAttendance(
+  schoolId: string,
+  studentId: string,
+  divisionId: string,
+  date: string,
+  status: AttendanceStatus,
+  userId: string,
+  observation?: string
+): Promise<Attendance> {
+  const existing = await db.query.attendance.findFirst({
+    where: and(
+      eq(attendance.studentId, studentId),
+      eq(attendance.date, date),
+      eq(attendance.divisionId, divisionId)
+    ),
+  })
 
-  static async markAttendance(
-    supabase: SupabaseClient,
-    schoolId: string,
-    studentId: string,
-    divisionId: string,
-    date: string,
-    status: AttendanceStatus,
-    userId: string,
-    observation?: string
-  ): Promise<Attendance> {
-    const existing = await supabase
-      .from("attendance")
-      .select("*")
-      .eq("student_id", studentId)
-      .eq("date", date)
-      .eq("division_id", divisionId)
-      .maybeSingle()
-
-    if (existing.error) throw new Error(`Error checking existing attendance: ${existing.error.message}`)
-
-    if (existing.data) {
-      const previousStatus = existing.data.status
-      const { data: updated, error } = await supabase
-        .from("attendance")
-        .update({
-          status,
-          observation: observation ?? existing.data.observation,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.data.id)
-        .select()
-        .single()
-
-      if (error) throw new Error(`Error updating attendance: ${error.message}`)
-
-      await AttendanceService.logChange(
-        supabase,
-        existing.data.id,
-        previousStatus,
-        status,
-        userId
-      )
-
-      return updated
-    }
-
-    const { data: created, error } = await supabase
-      .from("attendance")
-      .insert({
-        school_id: schoolId,
-        student_id: studentId,
-        division_id: divisionId,
-        date,
-        status,
-        observation: observation ?? null,
-        created_by: userId,
-      })
-      .select()
-      .single()
-
-    if (error) throw new Error(`Error marking attendance: ${error.message}`)
-
-    await AttendanceService.logChange(
-      supabase,
-      created.id,
-      null,
-      status,
-      userId
-    )
-
-    return created
-  }
-
-  static async markBulk(
-    supabase: SupabaseClient,
-    schoolId: string,
-    divisionId: string,
-    date: string,
-    records: { studentId: string; status: AttendanceStatus; observation?: string }[],
-    userId: string
-  ): Promise<Attendance[]> {
-    const results: Attendance[] = []
-
-    for (const record of records) {
-      const attendance = await AttendanceService.markAttendance(
-        supabase,
-        schoolId,
-        record.studentId,
-        divisionId,
-        date,
-        record.status,
-        userId,
-        record.observation
-      )
-      results.push(attendance)
-    }
-
-    return results
-  }
-
-  static async updateAttendance(
-    supabase: SupabaseClient,
-    id: string,
-    status: AttendanceStatus,
-    userId: string,
-    observation?: string
-  ): Promise<Attendance> {
-    const { data: existing, error: fetchError } = await supabase
-      .from("attendance")
-      .select("*")
-      .eq("id", id)
-      .single()
-
-    if (fetchError) throw new Error(`Error fetching attendance: ${fetchError.message}`)
-
+  if (existing) {
     const previousStatus = existing.status
-
-    const { data: updated, error } = await supabase
-      .from("attendance")
-      .update({
+    const rows = await db
+      .update(attendance)
+      .set({
         status,
         observation: observation ?? existing.observation,
-        updated_at: new Date().toISOString(),
+        updatedAt: new Date(),
       })
-      .eq("id", id)
-      .select()
-      .single()
+      .where(eq(attendance.id, existing.id))
+      .returning()
 
-    if (error) throw new Error(`Error updating attendance: ${error.message}`)
-
-    await AttendanceService.logChange(supabase, id, previousStatus, status, userId)
-
-    return updated
-  }
-
-  static async logChange(
-    supabase: SupabaseClient,
-    attendanceId: string,
-    previousStatus: AttendanceStatus | null,
-    newStatus: AttendanceStatus,
-    userId: string
-  ): Promise<void> {
-    const { error } = await supabase.from("attendance_log").insert({
-      attendance_id: attendanceId,
-      previous_status: previousStatus,
-      new_status: newStatus,
-      changed_by: userId,
-      changed_at: new Date().toISOString(),
+    await db.insert(attendanceLog).values({
+      attendanceId: existing.id,
+      previousStatus,
+      newStatus: status,
+      changedBy: userId,
     })
 
-    if (error) throw new Error(`Error logging attendance change: ${error.message}`)
+    return rows[0] as Attendance
   }
 
-  static async getMonthlyReport(
-    supabase: SupabaseClient,
-    schoolId: string,
-    divisionId: string,
-    year: number,
-    month: number
-  ): Promise<
-    {
-      date: string
-      present: number
-      absent: number
-      absent_justified: number
-      late: number
-      early_withdrawal: number
-    }[]
-  > {
-    const start = format(new Date(year, month - 1, 1), "yyyy-MM-dd")
-    const end = format(new Date(year, month, 0), "yyyy-MM-dd")
-
-    const { data, error } = await supabase
-      .from("attendance")
-      .select("date, status")
-      .eq("school_id", schoolId)
-      .eq("division_id", divisionId)
-      .gte("date", start)
-      .lte("date", end)
-      .order("date", { ascending: true })
-
-    if (error) throw new Error(`Error fetching monthly report: ${error.message}`)
-
-    const reportMap = new Map<
-      string,
-      { present: number; absent: number; absent_justified: number; late: number; early_withdrawal: number }
-    >()
-
-    for (const entry of data ?? []) {
-      if (!reportMap.has(entry.date)) {
-        reportMap.set(entry.date, {
-          present: 0,
-          absent: 0,
-          absent_justified: 0,
-          late: 0,
-          early_withdrawal: 0,
-        })
-      }
-      const day = reportMap.get(entry.date)!
-      if (entry.status === "present") day.present++
-      else if (entry.status === "absent") day.absent++
-      else if (entry.status === "absent_justified") day.absent_justified++
-      else if (entry.status === "late") day.late++
-      else if (entry.status === "early_withdrawal") day.early_withdrawal++
-    }
-
-    return Array.from(reportMap.entries()).map(([date, counts]) => ({
+  const rows = await db
+    .insert(attendance)
+    .values({
+      schoolId,
+      studentId,
+      divisionId,
       date,
-      ...counts,
-    }))
-  }
+      status,
+      observation: observation ?? null,
+      createdBy: userId,
+    })
+    .returning()
 
-  static async getStudentSummary(
-    supabase: SupabaseClient,
-    studentId: string,
-    academicYearId: string
-  ): Promise<{
-    total: number
+  await db.insert(attendanceLog).values({
+    attendanceId: rows[0].id,
+    previousStatus: null,
+    newStatus: status,
+    changedBy: userId,
+  })
+
+  return rows[0] as Attendance
+}
+
+export async function markBulk(
+  schoolId: string,
+  divisionId: string,
+  date: string,
+  records: { studentId: string; status: AttendanceStatus; observation?: string }[],
+  userId: string
+): Promise<Attendance[]> {
+  const results: Attendance[] = []
+  for (const record of records) {
+    const attendance = await markAttendance(
+      schoolId,
+      record.studentId,
+      divisionId,
+      date,
+      record.status,
+      userId,
+      record.observation
+    )
+    results.push(attendance)
+  }
+  return results
+}
+
+export async function updateAttendanceRecord(
+  id: string,
+  status: AttendanceStatus,
+  userId: string,
+  observation?: string
+): Promise<Attendance> {
+  const existing = await db.query.attendance.findFirst({
+    where: eq(attendance.id, id),
+  })
+
+  if (!existing) throw new Error("Attendance record not found")
+
+  const previousStatus = existing.status
+
+  const rows = await db
+    .update(attendance)
+    .set({
+      status,
+      observation: observation ?? existing.observation,
+      updatedAt: new Date(),
+    })
+    .where(eq(attendance.id, id))
+    .returning()
+
+  await db.insert(attendanceLog).values({
+    attendanceId: id,
+    previousStatus,
+    newStatus: status,
+    changedBy: userId,
+  })
+
+  return rows[0] as Attendance
+}
+
+export async function getMonthlyReport(
+  schoolId: string,
+  divisionId: string,
+  year: number,
+  month: number
+) {
+  const start = format(new Date(year, month - 1, 1), "yyyy-MM-dd")
+  const end = format(new Date(year, month, 0), "yyyy-MM-dd")
+
+  const records = await db.query.attendance.findMany({
+    where: and(
+      eq(attendance.schoolId, schoolId),
+      eq(attendance.divisionId, divisionId),
+      gte(attendance.date, start),
+      lte(attendance.date, end)
+    ),
+    orderBy: (t, { asc }) => [asc(t.date)],
+    columns: { date: true, status: true },
+  })
+
+  const reportMap = new Map<string, {
     present: number
     absent: number
     absent_justified: number
     late: number
     early_withdrawal: number
-    percentage: number
-  }> {
-    const { data, error } = await supabase
-      .from("attendance")
-      .select("status")
-      .eq("student_id", studentId)
-      .eq("academic_year_id", academicYearId)
+  }>()
 
-    if (error) throw new Error(`Error fetching student summary: ${error.message}`)
-
-    const records = data ?? []
-    const total = records.length
-    const present = records.filter((r) => r.status === "present").length
-    const absent = records.filter((r) => r.status === "absent").length
-    const absent_justified = records.filter((r) => r.status === "absent_justified").length
-    const late = records.filter((r) => r.status === "late").length
-    const early_withdrawal = records.filter((r) => r.status === "early_withdrawal").length
-
-    const attended = present + late + early_withdrawal
-    const percentage = total > 0 ? Math.round((attended / total) * 100) : 100
-
-    return {
-      total,
-      present,
-      absent,
-      absent_justified,
-      late,
-      early_withdrawal,
-      percentage,
+  for (const entry of records) {
+    if (!reportMap.has(entry.date)) {
+      reportMap.set(entry.date, {
+        present: 0,
+        absent: 0,
+        absent_justified: 0,
+        late: 0,
+        early_withdrawal: 0,
+      })
     }
+    const day = reportMap.get(entry.date)!
+    if (entry.status === "present") day.present++
+    else if (entry.status === "absent") day.absent++
+    else if (entry.status === "absent_justified") day.absent_justified++
+    else if (entry.status === "late") day.late++
+    else if (entry.status === "early_withdrawal") day.early_withdrawal++
   }
+
+  return Array.from(reportMap.entries()).map(([date, counts]) => ({
+    date,
+    ...counts,
+  }))
 }
 
-async function ensureContext(client = createClient()) {
-  const { data: { user } } = await client.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  const activeSchoolId = getActiveSchoolId()
-  if (activeSchoolId) {
-    return { supabase: client, userId: user.id, schoolId: activeSchoolId }
-  }
-  const { data: profile } = await client
-    .from("profiles")
-    .select("school_id")
-    .eq("id", user.id)
-    .maybeSingle()
-  if (!profile?.school_id) throw new Error("No active school selected")
-  return { supabase: client, userId: user.id, schoolId: profile.school_id }
+export async function getStudentSummary(studentId: string) {
+  const records = await db.query.attendance.findMany({
+    where: eq(attendance.studentId, studentId),
+    columns: { status: true },
+  })
+
+  const total = records.length
+  const present = records.filter((r) => r.status === "present").length
+  const absent = records.filter((r) => r.status === "absent").length
+  const absent_justified = records.filter((r) => r.status === "absent_justified").length
+  const late = records.filter((r) => r.status === "late").length
+  const early_withdrawal = records.filter((r) => r.status === "early_withdrawal").length
+
+  const attended = present + late + early_withdrawal
+  const percentage = total > 0 ? Math.round((attended / total) * 100) : 100
+
+  return { total, present, absent, absent_justified, late, early_withdrawal, percentage }
 }
 
-export const attendanceService = {
-  async getByDivisionAndDate(divisionId: string, date: string) {
-    const { supabase, schoolId } = await ensureContext()
-    return AttendanceService.getByDivisionAndDate(supabase, divisionId, date, schoolId ?? "")
-  },
-  async mark(data: {
-    student_id: string
-    division_id: string
-    date: string
-    status: AttendanceStatus
-    observation?: string
-  }) {
-    const { supabase, schoolId, userId } = await ensureContext()
-    return AttendanceService.markAttendance(
-      supabase,
-      schoolId ?? "",
-      data.student_id,
-      data.division_id,
-      data.date,
-      data.status,
-      userId ?? "",
-      data.observation
-    )
-  },
-  async markBulk(data: {
-    divisionId: string
-    date: string
-    records: Array<{ student_id: string; status: AttendanceStatus; observation?: string }>
-  }) {
-    const { supabase, schoolId, userId } = await ensureContext()
-    return AttendanceService.markBulk(
-      supabase,
-      schoolId ?? "",
-      data.divisionId,
-      data.date,
-      data.records.map((r) => ({
-        studentId: r.student_id,
-        status: r.status,
-        observation: r.observation,
-      })),
-      userId ?? ""
-    )
-  },
-  async getReport(divisionId: string, year: number, month: number) {
-    const { supabase, schoolId } = await ensureContext()
-    return AttendanceService.getMonthlyReport(supabase, schoolId ?? "", divisionId, year, month)
-  },
+export async function getEmployeeSchedulesBySchool(schoolId: string) {
+  const data = await db.query.employeeSchedules.findMany({
+    where: eq(employeeSchedules.schoolId, schoolId),
+    orderBy: (t, { asc: a }) => [a(t.dayOfWeek), a(t.timeStart)],
+  })
+
+  const grouped: Record<string, Record<number, { time_start: string; time_end: string }[]>> = {}
+  for (const s of data) {
+    if (!grouped[s.employeeId]) grouped[s.employeeId] = {}
+    if (!grouped[s.employeeId][s.dayOfWeek]) grouped[s.employeeId][s.dayOfWeek] = []
+    grouped[s.employeeId][s.dayOfWeek].push({
+      time_start: s.timeStart.slice(0, 5),
+      time_end: s.timeEnd.slice(0, 5),
+    })
+  }
+  return grouped
+}
+
+export async function getAttendanceWithStudents(schoolId: string) {
+  const records = await db.query.attendance.findMany({
+    where: eq(attendance.schoolId, schoolId),
+    with: {
+      student: { columns: { firstName: true, lastName: true, dni: true } },
+      division: { columns: { name: true } },
+      creator: { columns: { firstName: true, lastName: true } },
+    },
+    orderBy: (t, { desc }) => [desc(t.createdAt)],
+    limit: 200,
+  })
+  return records
+}
+
+export async function getEmployeeAttendanceHistory(schoolId: string) {
+  const records = await db.query.employeeAttendance.findMany({
+    where: eq(employeeAttendance.schoolId, schoolId),
+    orderBy: (t, { desc }) => [desc(t.createdAt)],
+    limit: 200,
+  })
+
+  const allIds = [
+    ...new Set(
+      records.flatMap((r) => [r.employeeId, r.createdBy].filter(Boolean))
+    ),
+  ]
+
+  if (allIds.length === 0) return []
+
+  const profileRows = await db.query.profiles.findMany({
+    where: inArray(profiles.id, allIds),
+    columns: { id: true, firstName: true, lastName: true },
+  })
+
+  const profileMap = new Map(profileRows.map((p) => [p.id, p]))
+
+  return records.map((r) => ({
+    ...r,
+    employee: profileMap.get(r.employeeId) ?? null,
+    creator: profileMap.get(r.createdBy) ?? null,
+  }))
+}
+
+export async function getDivisionSchedulesBySchool(schoolId: string) {
+  return db.query.divisionSchedules.findMany({
+    where: eq(divisionSchedules.schoolId, schoolId),
+    with: {
+      subject: { columns: { name: true } },
+      teacher: { columns: { firstName: true, lastName: true } },
+    },
+    orderBy: (t, { asc: a }) => [a(t.dayOfWeek), a(t.timeStart)],
+  })
+}
+
+export async function getEmployeeAttendanceByDate(schoolId: string, date: string) {
+  return db.query.employeeAttendance.findMany({
+    where: and(
+      eq(employeeAttendance.schoolId, schoolId),
+      eq(employeeAttendance.date, date)
+    ),
+  })
+}
+
+export async function hasSchedulesForSchool(schoolId: string): Promise<boolean> {
+  const [empRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(employeeSchedules)
+    .where(eq(employeeSchedules.schoolId, schoolId))
+    .limit(1)
+
+  if ((empRow?.count ?? 0) > 0) return true
+
+  const [divRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(divisionSchedules)
+    .where(eq(divisionSchedules.schoolId, schoolId))
+    .limit(1)
+
+  return (divRow?.count ?? 0) > 0
+}
+
+export async function getScheduledIdsForDay(schoolId: string, dayOfWeek: number): Promise<Set<string>> {
+  const empRows = await db.query.employeeSchedules.findMany({
+    where: and(
+      eq(employeeSchedules.schoolId, schoolId),
+      eq(employeeSchedules.dayOfWeek, dayOfWeek)
+    ),
+    columns: { employeeId: true },
+  })
+
+  const divRows = await db.query.divisionSchedules.findMany({
+    where: and(
+      eq(divisionSchedules.schoolId, schoolId),
+      eq(divisionSchedules.dayOfWeek, dayOfWeek)
+    ),
+    columns: { teacherId: true },
+  })
+
+  const ids = new Set<string>()
+  for (const s of empRows) ids.add(s.employeeId)
+  for (const s of divRows) ids.add(s.teacherId)
+  return ids
+}
+
+export async function getAttendanceByDateRange(
+  divisionId: string,
+  schoolId: string,
+  startDate: string,
+  endDate: string
+) {
+  return db.query.attendance.findMany({
+    where: and(
+      eq(attendance.divisionId, divisionId),
+      eq(attendance.schoolId, schoolId),
+      gte(attendance.date, startDate),
+      lte(attendance.date, endDate)
+    ),
+    columns: { date: true, status: true },
+    orderBy: (t, { asc }) => [asc(t.date)],
+  })
+}
+
+export async function getAttendanceReportWithStudents(
+  divisionId: string,
+  schoolId: string,
+  startDate: string,
+  endDate: string
+) {
+  return db.query.attendance.findMany({
+    where: and(
+      eq(attendance.divisionId, divisionId),
+      eq(attendance.schoolId, schoolId),
+      gte(attendance.date, startDate),
+      lte(attendance.date, endDate)
+    ),
+    with: {
+      student: { columns: { firstName: true, lastName: true, dni: true } },
+    },
+    orderBy: (t, { asc }) => [asc(t.date)],
+  })
 }

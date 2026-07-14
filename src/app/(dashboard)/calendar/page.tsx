@@ -57,7 +57,7 @@ import { useCalendarEvents, useCreateEvent } from "@/hooks/use-calendar"
 import { EVENT_TYPES } from "@/lib/constants"
 import { formatDateTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
-import type { EventType } from "@/types/database"
+import type { EventType, CalendarEvent } from "@/types/database"
 
 const EVENT_COLORS: Record<EventType, string> = {
   act: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -90,7 +90,7 @@ export default function CalendarPage() {
     const map = new Map<string, typeof events>()
     if (!events) return map
     for (const event of events) {
-      const key = format(new Date(event.start_date), "yyyy-MM-dd")
+      const key = format(new Date(event.startDate), "yyyy-MM-dd")
       const existing = map.get(key) || []
       existing.push(event)
       map.set(key, existing)
@@ -174,7 +174,7 @@ export default function CalendarPage() {
                     {format(day, "d")}
                   </span>
                   <div className="mt-1 space-y-0.5">
-                    {dayEvents.slice(0, 3).map((event) => (
+                    {dayEvents.slice(0, 3).map((event: CalendarEvent) => (
                       <Dialog
                         key={event.id}
                         open={selectedEvent === event.id}
@@ -207,13 +207,13 @@ export default function CalendarPage() {
                             )}
                             <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground space-y-1">
                               <p>
-                                Inicio: {formatDateTime(event.start_date)}
+                                Inicio: {formatDateTime(event.startDate)}
                               </p>
-                              {event.end_date && (
-                                <p>Fin: {formatDateTime(event.end_date)}</p>
+                              {event.endDate && (
+                                <p>Fin: {formatDateTime(event.endDate)}</p>
                               )}
                               <p>
-                                {event.all_day
+                                {event.allDay
                                   ? "Todo el día"
                                   : "Horario específico"}
                               </p>
@@ -253,13 +253,13 @@ function NewEventForm({ onSuccess }: { onSuccess: () => void }) {
     e.preventDefault()
     if (!title || !type || !startDate) return
     await createEvent.mutateAsync({
-      school_id: "",
+      schoolId: "",
       title,
       description: description || null,
       type: type as EventType,
-      start_date: new Date(startDate).toISOString(),
-      end_date: endDate ? new Date(endDate).toISOString() : null,
-      all_day: allDay,
+      startDate: new Date(startDate),
+      endDate: endDate ? new Date(endDate) : null,
+      allDay: allDay,
     })
     onSuccess()
   }

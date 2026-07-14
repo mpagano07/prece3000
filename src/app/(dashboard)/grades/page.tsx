@@ -6,7 +6,9 @@ import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
 import { useCourses } from "@/hooks/use-courses"
 import { useActiveAcademicYear } from "@/hooks/use-academic-years"
-import { courseService } from "@/services/courses"
+import { getDivisions } from "@/services/courses"
+import { getAllStudents, getSubjectsForDivision } from "@/services/students"
+import { getGradesByDivision } from "@/services/grades"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingScreen } from "@/components/shared/loading-screen"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -41,19 +43,19 @@ const PARTIAL_OPTIONS = [
   { value: "TED", label: "TED", color: "text-red-600 bg-red-50" },
 ] as const
 
-type GradeField = "partial_1" | "final_1" | "partial_2" | "final_2"
-const FIELDS: GradeField[] = ["partial_1", "final_1", "partial_2", "final_2"]
+type GradeField = "partial1" | "final1" | "partial2" | "final2"
+const FIELDS: GradeField[] = ["partial1", "final1", "partial2", "final2"]
 const FIELD_LABELS: Record<GradeField, string> = {
-  partial_1: "P1", final_1: "F1",
-  partial_2: "P2", final_2: "F2",
+  partial1: "P1", final1: "F1",
+  partial2: "P2", final2: "F2",
 }
 
 function getGradeValue(grade: Grade | undefined, field: GradeField): string {
   if (!grade) return ""
-  if (field === "partial_1") return grade.partial_1 ?? ""
-  if (field === "final_1") return grade.final_1?.toString() ?? ""
-  if (field === "partial_2") return grade.partial_2 ?? ""
-  if (field === "final_2") return grade.final_2?.toString() ?? ""
+  if (field === "partial1") return grade.partial1 ?? ""
+  if (field === "final1") return grade.final1?.toString() ?? ""
+  if (field === "partial2") return grade.partial2 ?? ""
+  if (field === "final2") return grade.final2?.toString() ?? ""
   return ""
 }
 
@@ -74,111 +76,58 @@ export default function GradesPage() {
 
   const { data: divisions, isLoading: divisionsLoading } = useQuery({
     queryKey: ["divisions", courseId],
-    queryFn: () => courseService.getDivisions(courseId),
+    queryFn: () => getDivisions(courseId),
     enabled: !!courseId,
   })
 
   const { data: students, isLoading: studentsLoading } = useQuery({
     queryKey: ["students", school?.id, divisionId],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("students")
-        .select("*")
-        .eq("school_id", school!.id)
-        .eq("division_id", divisionId)
-        .eq("status", "active")
-        .order("last_name")
-        .order("first_name")
-      if (error) throw error
-      return data ?? []
-    },
+    queryFn: () => getAllStudents(school!.id, divisionId),
     enabled: !!school?.id && !!divisionId,
   })
 
   const { data: subjects, isLoading: subjectsLoading } = useQuery({
     queryKey: ["division-subjects", divisionId],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const seen = new Set<string>()
-      const result: Array<{ id: string; name: string }> = []
-
-      const { data: schedules } = await supabase
-        .from("division_schedules")
-        .select("subject:subjects(*)")
-        .eq("division_id", divisionId)
-
-      for (const s of (schedules ?? []) as Array<{ subject: any }>) {
-        const sub = s.subject
-        if (sub && !seen.has(sub.id)) {
-          seen.add(sub.id)
-          result.push({ id: sub.id, name: sub.name })
-        }
-      }
-
-      const { data: assignments } = await supabase
-        .from("teacher_assignments")
-        .select("subject:subjects(*)")
-        .eq("division_id", divisionId)
-
-      for (const a of (assignments ?? []) as Array<{ subject: any }>) {
-        const sub = a.subject
-        if (sub && !seen.has(sub.id)) {
-          seen.add(sub.id)
-          result.push({ id: sub.id, name: sub.name })
-        }
-      }
-
-      result.sort((a, b) => a.name.localeCompare(b.name))
-      return result
-    },
+    queryFn: () => getSubjectsForDivision(divisionId),
     enabled: !!divisionId,
   })
 
   const { data: grades, isLoading: gradesLoading } = useQuery({
     queryKey: ["grades", school?.id, divisionId],
-    queryFn: async () => {
-      const supabase = (await import("@/lib/supabase/client")).createClient()
-      const { data, error } = await supabase
-        .from("grades")
-        .select("*")
-        .eq("division_id", divisionId)
-      if (error) throw error
-      return data ?? []
-    },
+    queryFn: () => getGradesByDivision(divisionId),
     enabled: !!school?.id && !!divisionId,
   })
 
   const saveMutation = useMutation({
     mutationFn: async ({
-      student_id,
-      subject_id,
+      studentId,
+      subjectId,
       field,
       value,
     }: {
-      student_id: string
-      subject_id: string
+      studentId: string
+      subjectId: string
       field: GradeField
       value: string
     }) => {
       if (!activeAcademicYear?.id) throw new Error("No hay un año académico activo")
 
-      const key = `${student_id}_${subject_id}`
+      const key = `${studentId}_${subjectId}`
       const existing = gradeMap.get(key)
 
       const res = await fetch("/api/grades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          student_id,
-          subject_id,
+          studentId,
+          subjectId,
           division_id: divisionId,
           school_id: school!.id,
           academic_year_id: activeAcademicYear.id,
-          partial_1: field === "partial_1" ? value : existing?.partial_1 ?? null,
-          final_1: field === "final_1" ? value : existing?.final_1 ?? null,
-          partial_2: field === "partial_2" ? value : existing?.partial_2 ?? null,
-          final_2: field === "final_2" ? value : existing?.final_2 ?? null,
+          partial1: field === "partial1" ? value : existing?.partial1 ?? null,
+          final1: field === "final1" ? value : existing?.final1 ?? null,
+          partial2: field === "partial2" ? value : existing?.partial2 ?? null,
+          final2: field === "final2" ? value : existing?.final2 ?? null,
         }),
       })
       const data = await res.json()
@@ -197,7 +146,7 @@ export default function GradesPage() {
   const gradeMap = useMemo(() => {
     const map = new Map<string, Grade>()
     for (const g of grades ?? []) {
-      map.set(`${g.student_id}_${g.subject_id}`, g)
+      map.set(`${g.studentId}_${g.subjectId}`, g)
     }
     return map
   }, [grades])
@@ -207,7 +156,7 @@ export default function GradesPage() {
 
   const handlePartialSelect = useCallback(
     (studentId: string, subjectId: string, field: GradeField, value: string) => {
-      saveMutation.mutate({ student_id: studentId, subject_id: subjectId, field, value })
+      saveMutation.mutate({ studentId: studentId, subjectId: subjectId, field, value })
     },
     [saveMutation]
   )
@@ -216,13 +165,13 @@ export default function GradesPage() {
     (studentId: string, subjectId: string, field: GradeField, rawValue: string) => {
       setEditingCell(null)
       if (rawValue === "") {
-        saveMutation.mutate({ student_id: studentId, subject_id: subjectId, field, value: "" })
+        saveMutation.mutate({ studentId: studentId, subjectId: subjectId, field, value: "" })
         return
       }
       const num = parseFloat(rawValue)
       if (isNaN(num)) { toast.error("Ingresá un número válido"); return }
       if (num < 0 || num > 10) { toast.error("La calificación debe ser entre 0 y 10"); return }
-      saveMutation.mutate({ student_id: studentId, subject_id: subjectId, field, value: rawValue })
+      saveMutation.mutate({ studentId: studentId, subjectId: subjectId, field, value: rawValue })
     },
     [saveMutation]
   )
@@ -327,7 +276,7 @@ export default function GradesPage() {
                               isExpanded ? "rotate-90" : ""
                             }`}
                           />
-                          {student.last_name}, {student.first_name}
+                          {student.lastName}, {student.firstName}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -368,7 +317,7 @@ export default function GradesPage() {
                                       {FIELDS.map((field) => {
                                         const cellKey = `${student.id}_${subject.id}_${field}`
                                         const isEditing = editingCell === cellKey
-                                        const isPartial = field === "partial_1" || field === "partial_2"
+                                        const isPartial = field === "partial1" || field === "partial2"
                                         const val = getGradeValue(grade, field)
 
                                         if (isPartial) {

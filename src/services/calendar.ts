@@ -1,119 +1,82 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/client"
+"use server"
+
+import { db } from "@/lib/db"
+import { calendarEvents } from "@/lib/db/schema"
+import { eq, and, gte, lte } from "drizzle-orm"
 import type { CalendarEvent } from "@/types/database"
-import { getActiveSchoolId } from "@/lib/active-school"
 
-export class CalendarService {
-  static async getAll(
-    supabase: SupabaseClient,
-    schoolId: string,
-    startDate: string,
-    endDate: string
-  ): Promise<CalendarEvent[]> {
-    const { data, error } = await supabase
-      .from("calendar_events")
-      .select("*")
-      .eq("school_id", schoolId)
-      .gte("start_date", startDate)
-      .lte("start_date", endDate)
-      .order("start_date", { ascending: true })
-
-    if (error) throw new Error(`Error fetching calendar events: ${error.message}`)
-    return data ?? []
-  }
-
-  static async create(
-    supabase: SupabaseClient,
-    schoolId: string,
-    data: {
-      title: string
-      description?: string
-      start_date: string
-      end_date?: string
-      type: string
-      all_day?: boolean
-    },
-    userId: string
-  ): Promise<CalendarEvent> {
-    const { data: event, error } = await supabase
-      .from("calendar_events")
-      .insert({
-        school_id: schoolId,
-        title: data.title,
-        description: data.description ?? null,
-        start_date: data.start_date,
-        end_date: data.end_date ?? null,
-        type: data.type,
-        all_day: data.all_day ?? false,
-        created_by: userId,
-      })
-      .select()
-      .single()
-
-    if (error) throw new Error(`Error creating calendar event: ${error.message}`)
-    return event
-  }
-
-  static async update(
-    supabase: SupabaseClient,
-    id: string,
-    data: Partial<{
-      title: string
-      description: string
-      start_date: string
-      end_date: string
-      type: string
-      all_day: boolean
-    }>
-  ): Promise<CalendarEvent> {
-    const { data: event, error } = await supabase
-      .from("calendar_events")
-      .update(data)
-      .eq("id", id)
-      .select()
-      .single()
-
-    if (error) throw new Error(`Error updating calendar event: ${error.message}`)
-    return event
-  }
-
-  static async delete(supabase: SupabaseClient, id: string): Promise<void> {
-    const { error } = await supabase.from("calendar_events").delete().eq("id", id)
-
-    if (error) throw new Error(`Error deleting calendar event: ${error.message}`)
-  }
+export async function getAllEvents(
+  schoolId: string,
+  startDate: string,
+  endDate: string
+): Promise<CalendarEvent[]> {
+  return db.query.calendarEvents.findMany({
+    where: and(
+      eq(calendarEvents.schoolId, schoolId),
+      gte(calendarEvents.startDate, new Date(startDate)),
+      lte(calendarEvents.startDate, new Date(endDate))
+    ),
+    orderBy: (t, { asc }) => [asc(t.startDate)],
+  }) as Promise<CalendarEvent[]>
 }
 
-async function ensureContext(client = createClient()) {
-  const { data: { user } } = await client.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  const activeSchoolId = getActiveSchoolId()
-  if (activeSchoolId) {
-    return { supabase: client, userId: user.id, schoolId: activeSchoolId }
-  }
-  const { data: profile } = await client
-    .from("profiles")
-    .select("school_id")
-    .eq("id", user.id)
-    .maybeSingle()
-  if (!profile?.school_id) throw new Error("No active school selected")
-  return { supabase: client, userId: user.id, schoolId: profile.school_id }
-}
-
-export const calendarService = {
-  async getEvents(startDate: string, endDate: string) {
-    const { supabase, schoolId } = await ensureContext()
-    return CalendarService.getAll(supabase, schoolId ?? "", startDate, endDate)
+export async function createEvent(
+  schoolId: string,
+  data: {
+    title: string
+    description?: string
+    start_date: string
+    end_date?: string
+    type: string
+    all_day?: boolean
   },
-  async createEvent(data: Omit<CalendarEvent, "id" | "created_at" | "created_by">) {
-    const { supabase, schoolId, userId } = await ensureContext()
-    return CalendarService.create(supabase, schoolId ?? "", {
+  userId: string
+): Promise<CalendarEvent> {
+  const rows = await db
+    .insert(calendarEvents)
+    .values({
+      schoolId,
       title: data.title,
-      description: data.description ?? undefined,
-      start_date: data.start_date,
-      end_date: data.end_date ?? undefined,
-      type: data.type,
-      all_day: data.all_day,
-    }, userId ?? "")
-  },
+      description: data.description ?? null,
+      startDate: new Date(data.start_date),
+      endDate: data.end_date ? new Date(data.end_date) : null,
+      type: data.type as CalendarEvent["type"],
+      allDay: data.all_day ?? false,
+      createdBy: userId,
+    })
+    .returning()
+
+  return rows[0] as CalendarEvent
+}
+
+export async function updateEvent(
+  id: string,
+  data: Partial<{
+    title: string
+    description: string
+    start_date: string
+    end_date: string
+    type: string
+    all_day: boolean
+  }>
+): Promise<CalendarEvent> {
+  const updateData: Record<string, unknown> = {}
+  if (data.title !== undefined) updateData.title = data.title
+  if (data.description !== undefined) updateData.description = data.description
+  if (data.start_date !== undefined) updateData.startDate = new Date(data.start_date)
+  if (data.end_date !== undefined) updateData.endDate = data.end_date ? new Date(data.end_date) : null
+  if (data.type !== undefined) updateData.type = data.type
+  if (data.all_day !== undefined) updateData.allDay = data.all_day
+
+  const rows = await db
+    .update(calendarEvents)
+    .set(updateData)
+    .where(eq(calendarEvents.id, id))
+    .returning()
+
+  return rows[0] as CalendarEvent
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  await db.delete(calendarEvents).where(eq(calendarEvents.id, id))
 }
