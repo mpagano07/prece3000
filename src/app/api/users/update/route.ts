@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { auth } from "@/lib/auth"
-import { profiles, preceptorSchools, teacherSchools } from "@/lib/db/schema"
-import { eq, and } from "drizzle-orm"
+import { profiles, preceptorSchools, teacherSchools, user } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { headers } from "next/headers"
 
 export async function POST(request: Request) {
   try {
-    const { user_id, school_ids, role } = await request.json()
+    const { user_id, first_name, last_name, email, school_ids, role } = await request.json()
 
     if (!user_id) {
       return NextResponse.json(
@@ -21,36 +21,90 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
+    // Get current profile to know the role
+    const [currentProfile] = await db
+      .select({ role: profiles.role })
+      .from(profiles)
+      .where(eq(profiles.id, user_id))
+      .limit(1)
+
+    const effectiveRole = role ?? currentProfile?.role
+
+    // Update name in profiles table
+    if (first_name !== undefined || last_name !== undefined || email !== undefined) {
+      const nameUpdate: Record<string, string> = {}
+      if (first_name !== undefined) nameUpdate.firstName = first_name
+      if (last_name !== undefined) nameUpdate.lastName = last_name
+      if (email !== undefined) nameUpdate.email = email
+
+      await db
+        .update(profiles)
+        .set(nameUpdate)
+        .where(eq(profiles.id, user_id))
+
+      // Also update the Better Auth user table
+      const authUpdates: Record<string, string> = {}
+      const authName = [first_name, last_name].filter(Boolean).join(" ")
+      if (authName) authUpdates.name = authName
+      if (email !== undefined) authUpdates.email = email
+
+      if (Object.keys(authUpdates).length > 0) {
+        await db
+          .update(user)
+          .set(authUpdates)
+          .where(eq(user.id, user_id))
+      }
+    }
+
     if (school_ids && school_ids.length > 0) {
       await db
         .update(profiles)
         .set({ schoolId: school_ids[0] })
         .where(eq(profiles.id, user_id))
 
-      await db
-        .delete(preceptorSchools)
-        .where(eq(preceptorSchools.preceptorId, user_id))
+      // Only update junction tables that match the effective role
+      if (effectiveRole === "preceptor") {
+        await db
+          .delete(preceptorSchools)
+          .where(eq(preceptorSchools.preceptorId, user_id))
 
-      await db.insert(preceptorSchools).values(
-        school_ids.map((sid: string) => ({
-          preceptorId: user_id,
-          schoolId: sid,
-        }))
-      )
+        await db.insert(preceptorSchools).values(
+          school_ids.map((sid: string) => ({
+            preceptorId: user_id,
+            schoolId: sid,
+          }))
+        )
+      }
 
-      await db
-        .delete(teacherSchools)
-        .where(eq(teacherSchools.teacherId, user_id))
+      if (effectiveRole === "teacher") {
+        await db
+          .delete(teacherSchools)
+          .where(eq(teacherSchools.teacherId, user_id))
 
-      await db.insert(teacherSchools).values(
-        school_ids.map((sid: string) => ({
-          teacherId: user_id,
-          schoolId: sid,
-        }))
-      )
+        await db.insert(teacherSchools).values(
+          school_ids.map((sid: string) => ({
+            teacherId: user_id,
+            schoolId: sid,
+          }))
+        )
+      }
     }
 
     if (role) {
+      // If role changed, clean up old junction table entries
+      if (currentProfile && currentProfile.role !== role) {
+        if (currentProfile.role === "preceptor") {
+          await db
+            .delete(preceptorSchools)
+            .where(eq(preceptorSchools.preceptorId, user_id))
+        }
+        if (currentProfile.role === "teacher") {
+          await db
+            .delete(teacherSchools)
+            .where(eq(teacherSchools.teacherId, user_id))
+        }
+      }
+
       await db
         .update(profiles)
         .set({ role: role as "super_admin" | "school_admin" | "director" | "preceptor" | "secretary" | "teacher" })

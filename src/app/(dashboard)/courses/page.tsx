@@ -236,7 +236,7 @@ export default function CoursesPage() {
   const handlePreceptorChange = (divisionId: string, preceptorId: string) => {
     updateDivision.mutate({
       id: divisionId,
-      data: { preceptorId: preceptorId === " " ? null : preceptorId },
+      data: { preceptorId: preceptorId === "" ? null : preceptorId },
     })
   }
 
@@ -594,7 +594,7 @@ function CourseCard({
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {canManage && preceptors.length > 0 ? (
+                    {canManage ? (
                       <Select
                         value={div.preceptorId ?? ""}
                         onValueChange={(v) => onPreceptorChange(div.id, v)}
@@ -604,7 +604,7 @@ function CourseCard({
                           <SelectValue placeholder="Sin preceptor" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value=" ">Sin preceptor</SelectItem>
+                          <SelectItem value="">Sin preceptor</SelectItem>
                           {preceptors.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
                               {p.lastName}, {p.firstName}

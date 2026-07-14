@@ -13,7 +13,7 @@ export async function getCoursesBySchool(
   if (academicYearId) conditions.push(eq(courses.academicYearId, academicYearId))
 
   return db.query.courses.findMany({
-    where: conditions.length === 1 ? conditions[0] : undefined,
+    where: conditions.length === 1 ? conditions[0] : and(...conditions),
     orderBy: (t, { asc: a }) => [a(t.name)],
   }) as Promise<Course[]>
 }

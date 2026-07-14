@@ -145,12 +145,30 @@ export default function AdminUsersPage() {
     enabled: profile?.role === "super_admin",
   })
 
+  const { data: teacherSchoolsData } = useQuery({
+    queryKey: ["teacher-schools"],
+    queryFn: async () => {
+      const tsData = await getTeacherSchoolMembers(selectedSchool)
+      return tsData
+    },
+    enabled: profile?.role === "super_admin" && !!selectedSchool,
+  })
+
   const preceptorSchoolMap = new Map<string, string[]>()
   if (preceptorSchools) {
     for (const ps of preceptorSchools) {
       const existing = preceptorSchoolMap.get(ps.preceptorId) ?? []
       existing.push(ps.schoolId)
       preceptorSchoolMap.set(ps.preceptorId, existing)
+    }
+  }
+
+  const teacherSchoolMap = new Map<string, string[]>()
+  if (teacherSchoolsData) {
+    for (const ts of teacherSchoolsData) {
+      const existing = teacherSchoolMap.get(ts.teacherId) ?? []
+      existing.push(ts.schoolId)
+      teacherSchoolMap.set(ts.teacherId, existing)
     }
   }
 
@@ -252,6 +270,7 @@ export default function AdminUsersPage() {
     id: string
     firstName: string
     lastName: string
+    email: string
     role: string
     schoolIds: string[]
   } | null>(null)
@@ -264,7 +283,10 @@ export default function AdminUsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: editUser.id,
-          schoolIds: editUser.schoolIds,
+          first_name: editUser.firstName,
+          last_name: editUser.lastName,
+          email: editUser.email,
+          school_ids: editUser.schoolIds,
           role: editUser.role,
         }),
       })
@@ -277,6 +299,7 @@ export default function AdminUsersPage() {
       setEditUser(null)
       queryClient.invalidateQueries({ queryKey: ["users"] })
       queryClient.invalidateQueries({ queryKey: ["preceptor-schools"] })
+      queryClient.invalidateQueries({ queryKey: ["teacher-schools"] })
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Error al actualizar usuario")
@@ -462,7 +485,10 @@ export default function AdminUsersPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {users.map((u) => {
-            const extraSchools = preceptorSchoolMap.get(u.id) ?? []
+            const extraSchools = [
+              ...(preceptorSchoolMap.get(u.id) ?? []),
+              ...(teacherSchoolMap.get(u.id) ?? []),
+            ]
             const allSchools = u.schoolId
               ? [u.schoolId, ...extraSchools.filter((id) => id !== u.schoolId)]
               : extraSchools
@@ -513,6 +539,7 @@ export default function AdminUsersPage() {
                           id: u.id,
                           firstName: u.firstName,
                           lastName: u.lastName,
+                          email: u.email,
                           role: u.role,
                           schoolIds: allSchools,
                         })}
@@ -603,6 +630,33 @@ export default function AdminUsersPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Nombre</Label>
+                <Input
+                  value={editUser?.firstName ?? ""}
+                  onChange={(e) => setEditUser((prev) => prev ? { ...prev, firstName: e.target.value } : null)}
+                  placeholder="Nombre"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Apellido</Label>
+                <Input
+                  value={editUser?.lastName ?? ""}
+                  onChange={(e) => setEditUser((prev) => prev ? { ...prev, lastName: e.target.value } : null)}
+                  placeholder="Apellido"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={editUser?.email ?? ""}
+                onChange={(e) => setEditUser((prev) => prev ? { ...prev, email: e.target.value } : null)}
+                placeholder="correo@ejemplo.com"
+              />
+            </div>
             <div className="space-y-2">
               <Label>Escuelas asignadas</Label>
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-3">

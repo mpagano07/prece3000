@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { profiles, teacherSchools, preceptorSchools, teacherAssignments } from "@/lib/db/schema"
-import { eq, and, inArray, asc } from "drizzle-orm"
+import { eq, and, inArray, asc, isNull } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import type { Profile } from "@/types/database"
 
@@ -31,7 +31,7 @@ export async function getTeachersBySchool(schoolId: string): Promise<TeacherWith
     const tsProfiles = await db.query.profiles.findMany({
       where: and(
         inArray(profiles.id, [...teacherIds]),
-        eq(profiles.deactivatedAt, null as unknown as Date)
+        isNull(profiles.deactivatedAt)
       ),
     })
     for (const p of tsProfiles) allIds.add(p.id)
@@ -41,7 +41,7 @@ export async function getTeachersBySchool(schoolId: string): Promise<TeacherWith
     where: and(
       eq(profiles.schoolId, schoolId),
       eq(profiles.role, "teacher"),
-      eq(profiles.deactivatedAt, null as unknown as Date)
+      isNull(profiles.deactivatedAt)
     ),
   })
   for (const p of fallbackProfiles) allIds.add(p.id)
@@ -82,15 +82,31 @@ export async function getPreceptorsBySchool(schoolId: string): Promise<Profile[]
   })
   const preceptorIds = psRows.map((p) => p.preceptorId)
 
-  const conditions = [eq(profiles.role, "preceptor")]
+  const allIds = new Set<string>()
+
   if (preceptorIds.length > 0) {
-    conditions.push(
-      inArray(profiles.id, preceptorIds)
-    )
+    const psProfiles = await db.query.profiles.findMany({
+      where: and(
+        inArray(profiles.id, preceptorIds),
+        isNull(profiles.deactivatedAt)
+      ),
+    })
+    for (const p of psProfiles) allIds.add(p.id)
   }
 
+  const fallbackProfiles = await db.query.profiles.findMany({
+    where: and(
+      eq(profiles.schoolId, schoolId),
+      eq(profiles.role, "preceptor"),
+      isNull(profiles.deactivatedAt)
+    ),
+  })
+  for (const p of fallbackProfiles) allIds.add(p.id)
+
+  if (allIds.size === 0) return []
+
   return db.query.profiles.findMany({
-    where: and(...conditions),
+    where: inArray(profiles.id, [...allIds]),
     orderBy: (t, { asc: a }) => [a(t.lastName), a(t.firstName)],
   }) as Promise<Profile[]>
 }
@@ -183,7 +199,7 @@ export async function getEmployeesBySchool(schoolId: string): Promise<Profile[]>
   if (ids.size === 0) return []
 
   return db.query.profiles.findMany({
-    where: and(inArray(profiles.id, [...ids]), eq(profiles.deactivatedAt, null as unknown as Date)),
+    where: and(inArray(profiles.id, [...ids]), isNull(profiles.deactivatedAt)),
     orderBy: (t, { asc: a }) => [a(t.lastName), a(t.firstName)],
   }) as Promise<Profile[]>
 }
@@ -193,7 +209,7 @@ export async function getStaffBySchool(schoolId: string): Promise<Profile[]> {
     where: and(
       eq(profiles.schoolId, schoolId),
       inArray(profiles.role, ["teacher", "preceptor", "secretary"]),
-      eq(profiles.deactivatedAt, null as unknown as Date),
+      isNull(profiles.deactivatedAt),
     ),
     orderBy: (t, { asc: a }) => [a(t.role), a(t.lastName)],
   }) as Promise<Profile[]>

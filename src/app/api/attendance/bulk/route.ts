@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const result: Array<{ id: string; studentId: string; status: string }> = []
 
     for (const record of records) {
-      const existing = existingMap.get(record.student_id)
+      const existing = existingMap.get(record.studentId)
 
       if (existing) {
         const [updated] = await db
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
           .insert(attendance)
           .values({
             schoolId,
-            studentId: record.student_id,
+            studentId: record.studentId,
             divisionId,
             date,
             status: record.status,
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
           })
           .returning()
 
-        result.push({ id: created.id, studentId: record.student_id, status: record.status })
+        result.push({ id: created.id, studentId: record.studentId, status: record.status })
       }
     }
 
