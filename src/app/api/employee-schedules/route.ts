@@ -73,7 +73,7 @@ export async function POST(request: Request) {
       .where(and(...conditions))
 
     const rows: ScheduleRow[] = []
-    for (const [empId, days] of Object.entries(schedules) as [string, Record<string, { time_start: string; time_end: string }[]>][]) {
+    for (const [empId, days] of Object.entries(schedules) as [string, Record<string, { timeStart?: string; timeEnd?: string; time_start?: string; time_end?: string }[]>][]) {
       if (employee_id && empId !== employee_id) continue
       for (const [dayStr, slots] of Object.entries(days)) {
         const day = Number(dayStr)
@@ -82,8 +82,8 @@ export async function POST(request: Request) {
             employee_id: empId,
             school_id,
             day_of_week: day,
-            time_start: slot.time_start,
-            time_end: slot.time_end,
+            time_start: slot.timeStart ?? slot.time_start ?? "",
+            time_end: slot.timeEnd ?? slot.time_end ?? "",
           })
         }
       }

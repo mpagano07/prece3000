@@ -33,20 +33,23 @@ export async function POST(request: Request) {
     // Update name in profiles table
     if (first_name !== undefined || last_name !== undefined || email !== undefined) {
       const nameUpdate: Record<string, string> = {}
-      if (first_name !== undefined) nameUpdate.firstName = first_name
-      if (last_name !== undefined) nameUpdate.lastName = last_name
-      if (email !== undefined) nameUpdate.email = email
+      if (first_name !== undefined && first_name !== "") nameUpdate.firstName = first_name
+      if (last_name !== undefined && last_name !== "") nameUpdate.lastName = last_name
+      if (email !== undefined && email !== "") nameUpdate.email = email
 
-      await db
-        .update(profiles)
-        .set(nameUpdate)
-        .where(eq(profiles.id, user_id))
+      if (Object.keys(nameUpdate).length > 0) {
+        await db
+          .update(profiles)
+          .set(nameUpdate)
+          .where(eq(profiles.id, user_id))
+      }
 
       // Also update the Better Auth user table
       const authUpdates: Record<string, string> = {}
-      const authName = [first_name, last_name].filter(Boolean).join(" ")
-      if (authName) authUpdates.name = authName
-      if (email !== undefined) authUpdates.email = email
+      if (first_name !== undefined && first_name !== "" && last_name !== undefined && last_name !== "") {
+        authUpdates.name = `${first_name} ${last_name}`
+      }
+      if (email !== undefined && email !== "") authUpdates.email = email
 
       if (Object.keys(authUpdates).length > 0) {
         await db

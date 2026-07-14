@@ -82,16 +82,16 @@ export function DivisionScheduleEditor({
   const saveMutation = useMutation({
     mutationFn: async (entries: ScheduleEntry[]) => {
       const schedules = entries.map((e) => ({
-        dayOfWeek: e.dayOfWeek,
-        timeStart: e.timeStart,
-        timeEnd: e.timeEnd,
-        subjectId: e.subjectId,
-        teacherId: e.teacherId,
+        subject_id: e.subjectId,
+        teacher_id: e.teacherId,
+        day_of_week: e.dayOfWeek,
+        time_start: e.timeStart,
+        time_end: e.timeEnd,
       }))
       const res = await fetch("/api/division-schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ division_id: divisionId, schoolId: schoolId, schedules }),
+        body: JSON.stringify({ division_id: divisionId, school_id: schoolId, schedules }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
