@@ -36,14 +36,3 @@ export async function getCommunicationsByStudent(studentId: string): Promise<Com
     orderBy: (t, { desc }) => [desc(t.sentAt)],
   }) as Promise<Communication[]>
 }
-
-export function generateWhatsAppLink(phone: string, message: string): string {
-  const cleaned = phone.replace(/[^\d]/g, "")
-  const encoded = encodeURIComponent(message)
-  return `https://wa.me/${cleaned}?text=${encoded}`
-}
-
-export function generateMailTo(email: string, subject: string, body: string): string {
-  const params = new URLSearchParams({ subject, body })
-  return `mailto:${email}?${params.toString()}`
-}
