@@ -658,6 +658,24 @@ export default function AdminUsersPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label>Cargo</Label>
+              <Select
+                value={editUser?.role ?? ""}
+                onValueChange={(v) => setEditUser((prev) => prev ? { ...prev, role: v, schoolIds: v === "preceptor" ? prev.schoolIds : prev.schoolIds.length > 1 ? [prev.schoolIds[0]] : prev.schoolIds } : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar cargo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.filter((r) => r.value !== "super_admin").map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Escuelas asignadas</Label>
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-3">
                 {schools?.length === 0 && (

@@ -119,15 +119,15 @@ export default function GradesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          studentId,
-          subjectId,
+          student_id: studentId,
+          subject_id: subjectId,
           division_id: divisionId,
           school_id: school!.id,
           academic_year_id: activeAcademicYear.id,
-          partial1: field === "partial1" ? value : existing?.partial1 ?? null,
-          final1: field === "final1" ? value : existing?.final1 ?? null,
-          partial2: field === "partial2" ? value : existing?.partial2 ?? null,
-          final2: field === "final2" ? value : existing?.final2 ?? null,
+          partial_1: field === "partial1" ? value : existing?.partial1 ?? null,
+          final_1: field === "final1" ? value : existing?.final1 ?? null,
+          partial_2: field === "partial2" ? value : existing?.partial2 ?? null,
+          final_2: field === "final2" ? value : existing?.final2 ?? null,
         }),
       })
       const data = await res.json()
