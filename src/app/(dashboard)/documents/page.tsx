@@ -46,6 +46,7 @@ import { useStudentDocuments, useUploadDocument, useDeleteDocument } from "@/hoo
 import { DOCUMENT_TYPES } from "@/lib/constants"
 import { formatDate, isImageFile } from "@/lib/utils"
 import type { DocumentType } from "@/types/database"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function DocumentsPage() {
   const [studentSearch, setStudentSearch] = useState("")
@@ -303,21 +304,22 @@ function UploadDocumentForm({
   onSuccess: () => void
 }) {
   const uploadDoc = useUploadDocument()
+  const { school, profile } = useAuth()
   const fileRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [type, setType] = useState<DocumentType | "">("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file || !type) return
+    if (!file || !type || !school || !profile) return
     await uploadDoc.mutateAsync({
-      school_id: "",
-      student_id: studentId,
+      schoolId: school.id,
+      studentId,
       name: file.name,
       type: type as DocumentType,
-      file_url: "",
-      uploaded_by: "",
-      uploaded_at: "",
+      fileUrl: "",
+      uploadedBy: profile.id,
+      uploadedAt: new Date(),
       file,
     } as any)
     onSuccess()
