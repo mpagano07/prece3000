@@ -24,6 +24,7 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24, // 1 day
   },
   trustedOrigins: [
+    "http://localhost:3000",
     process.env.BETTER_AUTH_URL || "http://localhost:3000",
   ],
   plugins: [
